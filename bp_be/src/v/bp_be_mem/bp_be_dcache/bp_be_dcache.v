@@ -1089,6 +1089,7 @@ module bp_be_dcache
   //        This also assumes that the placement remains the same, we still have to figure out how writing to each
   //        cache bank is gonna work
   //
+  //
   // if (assoc==8)
   //    multiplier = 0;
   // else if (assoc == 4)

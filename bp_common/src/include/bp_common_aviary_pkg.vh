@@ -32,8 +32,10 @@ package bp_common_aviary_pkg;
 
       ,lce_sets             : 64
       ,lce_assoc            : 8
+
       //,lce_dcache_sets      : 64
       ,lce_dcache_assoc     : 8
+      
       ,cce_block_width      : 512
       ,cce_pc_width         : 8
 
@@ -88,7 +90,7 @@ package bp_common_aviary_pkg;
       ,lce_assoc            : 8
 
       ,lce_dcache_assoc     : 4
-      
+
       ,cce_block_width      : 512
       ,cce_pc_width         : 8
 
