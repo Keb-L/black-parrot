@@ -272,7 +272,7 @@ typedef struct packed
   , localparam reg_addr_width_p    = 5                                                             \
   , localparam page_offset_width_p = 12                                                            \
   , localparam dmultiplier_p       = 8 / lce_dcache_assoc_p                                        \
-  , localparam dset_data_width_p   = 12                                                            \
+  , localparam dset_data_width_p   = dword_width_p*dmultiplier_p                                   \
                                                                                                    \
   , localparam cce_instr_width_p = 48                                                              \
                                                                                                    \
