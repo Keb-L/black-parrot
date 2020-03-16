@@ -145,6 +145,8 @@ typedef struct packed
   integer io_noc_cid_width;
   integer io_noc_len_width;
 
+  integer dset_data_width;
+
 }  bp_proc_param_s;
 
 // For now, we have a fixed address map
@@ -266,6 +268,7 @@ typedef struct packed
       : '{io_noc_y_cord_width_p+io_noc_x_cord_width_p, io_noc_x_cord_width_p, 0}                   \
   , localparam io_noc_cord_width_p      = io_noc_cord_markers_pos_p[io_noc_dims_p]                 \
                                                                                                    \
+  , localparam dset_data_width_p   = 64
   , localparam dword_width_p       = 64                                                            \
   , localparam instr_width_p       = 32                                                            \
   , localparam csr_addr_width_p    = 12                                                            \
