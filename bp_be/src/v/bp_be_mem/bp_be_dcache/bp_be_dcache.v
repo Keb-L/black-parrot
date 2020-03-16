@@ -167,9 +167,6 @@ module bp_be_dcache
   assign cache_req_o = cache_req_cast_o;
   assign cache_req_metadata_o = cache_req_metadata_cast_o;
 
-  // test with new param
-  // localparam associativity = 4;
-  
   // packet decoding
   //
   `declare_bp_be_dcache_pkt_s(bp_page_offset_width_gp, dword_width_p);
@@ -1080,42 +1077,6 @@ module bp_be_dcache
     end
   end
 
-
-
-  // TODO : instead of 0+ probably have to change it to assoc * dword_width_p when setting uncached_load_data_r
-  //        to choose the correct 64 bits 
-  // edit : it's not a static multiplier. it depends on which part of the data we're accessing
-  //        something like the following in pseudo code, then replace the 0+ with multiplier*dword_width_p+
-  //        This also assumes that the placement remains the same, we still have to figure out how writing to each
-  //        cache bank is gonna work
-  //
-  //
-  // if (assoc==8)
-  //    multiplier = 0;
-  // else if (assoc == 4)
-  //    if (way_id < 4) multiplier = 0;
-  //    else multiplier = 1;
-  // else if (assoc == 2)
-  //    if (bank == 0 or 2)
-  //        if (way_id < 4) multiplier = 0;
-  //        else multiplier = 1;
-  //    else 
-  //        if (way_id < 4) multiplier = 2;
-  //         else multiplier = 3;
-  // else
-  //    if (bank == 0)
-  //        if (way_id < 4) multiplier = 0;
-  //        else multiplier = 1;
-  //    else if (bank == 1)
-  //        if (way_id < 4) multiplier = 2;
-  //        else multiplier = 3;
-  //    else if (bank == 2)
-  //        if (way_id < 4) multiplier = 4;
-  //        else multiplier = 5;
-  //    else 
-  //        if (way_id < 4) multiplier = 6;
-  //        else multiplier = 7;
-
   //  uncached load data logic
   //
   //synopsys sync_set_reset "reset_i"
@@ -1199,8 +1160,8 @@ module bp_be_dcache
   end
 
   initial begin
-    // assert(dword_width_p == 64) else $error("dword_width_p has to be 64");
-    // assert(lce_assoc_p == 8) else $error("lce_assoc_p has to be 8");
+    assert(dword_width_p == 64) else $error("dword_width_p has to be 64");
+    assert(lce_assoc_p == 8) else $error("lce_assoc_p has to be 8");
   end
   // synopsys translate_on
 

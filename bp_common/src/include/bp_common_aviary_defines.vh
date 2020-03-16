@@ -144,10 +144,6 @@ typedef struct packed
   integer io_noc_did_width;
   integer io_noc_cid_width;
   integer io_noc_len_width;
-  
-
-  integer dset_data_width;
-  integer dmultiplier;
 
 }  bp_proc_param_s;
 
@@ -270,13 +266,13 @@ typedef struct packed
       : '{io_noc_y_cord_width_p+io_noc_x_cord_width_p, io_noc_x_cord_width_p, 0}                   \
   , localparam io_noc_cord_width_p      = io_noc_cord_markers_pos_p[io_noc_dims_p]                 \
                                                                                                    \
-  , localparam dset_data_width_p   = 64                                                            \
-  , localparam dmultiplier_p = 0                                                             \
   , localparam dword_width_p       = 64                                                            \
   , localparam instr_width_p       = 32                                                            \
   , localparam csr_addr_width_p    = 12                                                            \
   , localparam reg_addr_width_p    = 5                                                             \
   , localparam page_offset_width_p = 12                                                            \
+  , localparam dmultiplier_p       = 8 / lce_dcache_assoc_p                                        \
+  , localparam dset_data_width_p   = 12                                                            \
                                                                                                    \
   , localparam cce_instr_width_p = 48                                                              \
                                                                                                    \
