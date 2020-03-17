@@ -523,6 +523,15 @@ module bp_be_dcache
   logic [index_width_lp-1:0] lce_snoop_index_li;
   logic [way_id_width_lp-1:0] lce_snoop_way_li;
   logic lce_snoop_match_lo; 
+
+  // select which column of 64 bits is chosen
+  logic [dword_width_p-1:0] wbuf_entry_out_col;
+
+  if (dmultiplier == 0) assign wbuf_entry_out_col = wbuf_entry_out.data;
+  else if (dmultiplier == 1) begin
+    assign wbuf_entry_out_col = wbuf_entry_out.way_id[0]
+      ? wbuf_entry_out.data[0+:dword_width_p] : wbuf_entry_out.data[dword_width_p+:dword_width_p];
+  end
  
   bp_be_dcache_wbuf
     #(.data_width_p(dword_width_p)
