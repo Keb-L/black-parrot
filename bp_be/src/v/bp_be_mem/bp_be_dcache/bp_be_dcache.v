@@ -167,9 +167,6 @@ module bp_be_dcache
   assign cache_req_o = cache_req_cast_o;
   assign cache_req_metadata_o = cache_req_metadata_cast_o;
 
-  // test with new param
-  // localparam associativity = 4;
-  
   // packet decoding
   //
   `declare_bp_be_dcache_pkt_s(bp_page_offset_width_gp, dword_width_p);
@@ -1107,7 +1104,10 @@ module bp_be_dcache
     end
   en
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 828a6a0cf51597c6f489c5ecf85d6ff9dcafde6a
   //  uncached load data logic
   //
   //synopsys sync_set_reset "reset_i"
@@ -1191,8 +1191,8 @@ module bp_be_dcache
   end
 
   initial begin
-    // assert(dword_width_p == 64) else $error("dword_width_p has to be 64");
-    // assert(lce_assoc_p == 8) else $error("lce_assoc_p has to be 8");
+    assert(dword_width_p == 64) else $error("dword_width_p has to be 64");
+    assert(lce_assoc_p == 8) else $error("lce_assoc_p has to be 8");
   end
   // synopsys translate_on
 
