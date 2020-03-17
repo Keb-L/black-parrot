@@ -565,7 +565,7 @@ module bp_be_dcache
 
   // starting with the 4-way assoc
   logic [dword_width_p-1:0] data_tv_col;
-  logic [way_id_width_lp:0] bank_sel;
+  logic [way_id_width_lp-1:0] bank_sel;
 
   assign bank_sel = wbuf_entry_in.way_id ^ wbuf_entry_in.paddr[byte_offset_width_lp+:word_offset_width_lp];
 
@@ -1108,13 +1108,24 @@ module bp_be_dcache
   //  uncached load data logic
   //
   //synopsys sync_set_reset "reset_i"
+
+  // choose the correct data column depending on the associativity
+  // TODO : add support for 2/1 associativity
+  logic [dword_width_p-1:0] uncached_load_data_n;
+
+  if (dmultiplier_p == 0) assign uncached_load_data_n = data_mem_pkt.data[0+:dword_width_p];
+  else if (dmultiplier_p == 1) begin
+    assign uncached_load_data_n = data_mem_pkt.way_id[0]
+      ? data_mem_pkt.data[0+:dword_width_p] : data_mem_pkt.data[dword_width_p+:dword_width_p];
+  end
+
   always_ff @ (posedge clk_i) begin
     if (reset_i) begin
       uncached_load_data_v_r <= 1'b0;
     end
     else begin
       if (data_mem_pkt_v_i & (data_mem_pkt.opcode == e_cache_data_mem_uncached)) begin
-        uncached_load_data_r <= data_mem_pkt.data[0+:dword_width_p];
+        uncached_load_data_r <= uncached_load_data_n;
         uncached_load_data_v_r <= 1'b1;
       end
       else if (poison_i)
