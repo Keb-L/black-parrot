@@ -527,8 +527,8 @@ module bp_be_dcache
   // select which column of 64 bits is chosen
   logic [dword_width_p-1:0] wbuf_entry_out_col;
 
-  if (dmultiplier == 0) assign wbuf_entry_out_col = wbuf_entry_out.data;
-  else if (dmultiplier == 1) begin
+  if (dmultiplier_p == 1) assign wbuf_entry_out_col = wbuf_entry_out.data;
+  else if (dmultiplier_p == 2) begin
     assign wbuf_entry_out_col = wbuf_entry_out.way_id[0]
       ? wbuf_entry_out.data[0+:dword_width_p] : wbuf_entry_out.data[dword_width_p+:dword_width_p];
   end
@@ -578,21 +578,21 @@ module bp_be_dcache
 
   assign bank_sel = wbuf_entry_in.way_id ^ wbuf_entry_in.paddr[byte_offset_width_lp+:word_offset_width_lp];
 
-  if (dmultiplier_p == 0) begin
+  if (dmultiplier_p == 1) begin
     assign data_tv_col = data_tv_r;
   end
-  else if (dmultiplier_p == 1) begin
+  else if (dmultiplier_p == 2) begin
     assign data_tv_col = wbuf_entry_in.way_id[0]
       ? data_tv_r[0+:dword_width_p] : data_tv_r[dword_width_p+:dword_width_p];
   end
   /*
-  else if (dmultiplier_p == 2) begin
+  else if (dmultiplier_p == 4) begin
     if (bank[sel]) begin
 
     end
     assign data_op_tv_col_sel = wbuf_entry_in.way_id[dmultiplier_p] & ()
   end
-  else if (dmultiplier_p == 4) begin
+  else if (dmultiplier_p == 8) begin
 
   end
   */
@@ -930,7 +930,8 @@ module bp_be_dcache
         ? {wbuf_entry_out_index, wbuf_entry_out_word_offset}
         : {data_mem_pkt.index, data_mem_pkt.way_id ^ ((word_offset_width_lp)'(i))});
     assign data_mem_data_li[i] = wbuf_yumi_li
-      ? wbuf_entry_out.data
+// ? wbuf_entry_out.data
+      ? wbuf_entry_out_col
       : lce_data_mem_write_data[i];
   
     assign data_mem_mask_li[i] = wbuf_yumi_li
@@ -1111,7 +1112,7 @@ module bp_be_dcache
         load_reserved_v_r <= 1'b0;
       end
     end
-  en
+  end
 
 
   //  uncached load data logic
@@ -1122,8 +1123,8 @@ module bp_be_dcache
   // TODO : add support for 2/1 associativity
   logic [dword_width_p-1:0] uncached_load_data_n;
 
-  if (dmultiplier_p == 0) assign uncached_load_data_n = data_mem_pkt.data[0+:dword_width_p];
-  else if (dmultiplier_p == 1) begin
+  if (dmultiplier_p == 1) assign uncached_load_data_n = data_mem_pkt.data[0+:dword_width_p];
+  else if (dmultiplier_p == 2) begin
     assign uncached_load_data_n = data_mem_pkt.way_id[0]
       ? data_mem_pkt.data[0+:dword_width_p] : data_mem_pkt.data[dword_width_p+:dword_width_p];
   end
