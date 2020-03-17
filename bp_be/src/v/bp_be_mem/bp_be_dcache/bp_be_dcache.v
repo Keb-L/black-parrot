@@ -101,12 +101,12 @@ module bp_be_dcache
     // LSB decoding 
     // 3-bit Way ID = {D-Cache Way ID, column index}
     , localparam dcache_way_width_lp=`BSG_SAFE_CLOG2(lce_dcache_assoc_p)
-    , localparam dcache_col_width_lp=(way_id_width_lp-dcache_way_width_lp)
-    , localparam dcache_way_offset_lp=dcache_col_width_lp
+    // , localparam dcache_col_width_lp=(way_id_width_lp-dcache_way_width_lp)
+    // , localparam dcache_way_offset_lp=dcache_col_width_lp
 
     , localparam dcache_pkt_width_lp=`bp_be_dcache_pkt_width(page_offset_width_p,dword_width_p)
     , localparam tag_info_width_lp=`bp_be_dcache_tag_info_width(ptag_width_lp)
-    , localparam stat_info_width_lp=`bp_be_dcache_stat_info_width(lce_assoc_p)
+    , localparam stat_info_width_lp=`bp_be_dcache_stat_info_width(lce_dcache_assoc_p)
   )
   (
     input clk_i
@@ -382,7 +382,7 @@ module bp_be_dcache
   logic [paddr_width_p-1:0] paddr_tv_r;
   logic [dword_width_p-1:0] data_tv_r;
   bp_be_dcache_tag_info_s [lce_assoc_p-1:0] tag_info_tv_r;
-  logic [lce_assoc_p-1:0][dword_width_p-1:0] ld_data_tv_r;
+  logic [lce_dcache_assoc_p-1:0][dmultiplier_p-1:0][dword_width_p-1:0] ld_data_tv_r;
   logic [ptag_width_lp-1:0] addr_tag_tv;
   logic [index_width_lp-1:0] addr_index_tv;
   logic [word_offset_width_lp-1:0] addr_word_offset_tv;
@@ -446,16 +446,16 @@ module bp_be_dcache
 
   // miss_detect
   //
-  logic [lce_assoc_p-1:0] tag_match_tv;
-  logic [lce_assoc_p-1:0] load_hit_tv;
-  logic [lce_assoc_p-1:0] store_hit_tv;
-  logic [lce_assoc_p-1:0] invalid_tv;
+  logic [lce_dcache_assoc_p-1:0] tag_match_tv;
+  logic [lce_dcache_assoc_p-1:0] load_hit_tv;
+  logic [lce_dcache_assoc_p-1:0] store_hit_tv;
+  logic [lce_dcache_assoc_p-1:0] invalid_tv;
   logic load_hit;
   logic store_hit;
-  logic [way_id_width_lp-1:0] load_hit_way;
-  logic [way_id_width_lp-1:0] store_hit_way;
+  logic [dcache_way_width_lp-1:0] load_hit_way;
+  logic [dcache_way_width_lp-1:0] store_hit_way;
 
-  for (genvar i = 0; i < lce_assoc_p; i++) begin: tag_comp
+  for (genvar i = 0; i < lce_dcache_assoc_p; i++) begin: tag_comp
     assign tag_match_tv[i] = addr_tag_tv == tag_info_tv_r[i].tag;
     assign load_hit_tv[i] = tag_match_tv[i] & (tag_info_tv_r[i].coh_state != e_COH_I);
     assign store_hit_tv[i] = tag_match_tv[i] & ((tag_info_tv_r[i].coh_state == e_COH_M)
@@ -464,7 +464,7 @@ module bp_be_dcache
   end
 
   bsg_priority_encode
-    #(.width_p(lce_assoc_p)
+    #(.width_p(lce_dcache_assoc_p)
       ,.lo_to_hi_p(1)
       )
     pe_load_hit
@@ -474,7 +474,7 @@ module bp_be_dcache
       );
   
   bsg_priority_encode
-    #(.width_p(lce_assoc_p)
+    #(.width_p(lce_dcache_assoc_p)
       ,.lo_to_hi_p(1)
       )
     pe_store_hit
@@ -606,7 +606,7 @@ module bp_be_dcache
   // stat_mem {lru, dirty}
   // It has (ways_p-1) bits to form pseudo-LRU tree, and ways_p bits for dirty
   // bit for each block in set.
-  `declare_bp_be_dcache_stat_info_s(lce_assoc_p);
+  `declare_bp_be_dcache_stat_info_s(lce_dcache_assoc_p);
 
   logic stat_mem_v_li;
   logic stat_mem_w_li;
@@ -632,6 +632,7 @@ module bp_be_dcache
   
   logic [way_id_width_lp-1:0] lru_encode;
 
+  // Changed LRU tree to be reliant on assoc
   bsg_lru_pseudo_tree_encode #(
     .ways_p(lce_assoc_p)
   ) lru_encoder (
@@ -921,27 +922,27 @@ module bp_be_dcache
   // WRITE BUTTERFLY
   // We generate dmultiplier_p write muxes write to each column
   // logic [dmultiplier_p-1:0][lce_dcache_assoc_p-1:0][dword_width_p-1:0] mux_butterfly_data;
-  logic [lce_dcache_assoc_p-1:0][dset_data_width_p-1:0] mux_butterfly_data;
-  logic [way_id_width_lp-1:0] mux_butterfly_way;
-  assign mux_butterfly_data = data_mem_pkt.data;
+  logic [lce_dcache_assoc_p-1:0][dset_data_width_p-1:0] wr_mux_butterfly_data;
+  logic [dcache_way_width_lp-1:0] wr_mux_butterfly_way;
+  assign wr_mux_butterfly_data = data_mem_pkt.data;
 
   // Decode 3 bit UCE way id into the column id (MSB) and the way id everything else
   // Generator if statement for when dcache assoc = 1
   //  In this scenario, there is only 1 way (0-bit value)
   if (lce_dcache_assoc_p == 1)
-    assign mux_butterfly_way = data_mem_pkt.way_id[dcache_way_width_lp-1:dcache_way_offset_lp];
+    assign wr_mux_butterfly_way = '0;
   else
-    assign mux_butterfly_way = '0;
+    assign wr_mux_butterfly_way = data_mem_pkt.way_id[(way_id_width_lp-1)-:dcache_way_width_lp];
 
   // mux butterfly will now swap blocks of 64, 128, 256, 512 bits based on the associativity
   // We use the LSB to indicate the columns
   // SEE https://docs.google.com/presentation/d/1mMzWhTA8WwRPAZyEWUC-aKF5MDe_vluYyOzZNz-gprE/edit#slide=id.g818676014a_0_18
   bsg_mux_butterfly #(
     .width_p( dset_data_width_p )
-    ,.els_p(lce_dcache_assoc_p)
+    ,.els_p( lce_dcache_assoc_p )
   ) write_mux_butterfly (
-    .data_i( mux_butterfly_data )
-    ,.sel_i( mux_butterfly_way )
+    .data_i( wr_mux_butterfly_data )
+    ,.sel_i( wr_mux_butterfly_way )
     ,.data_o(lce_data_mem_write_data)
   );
 
@@ -999,12 +1000,12 @@ module bp_be_dcache
     ? addr_index_tv
     : stat_mem_pkt.index;
 
-  logic [way_id_width_lp-1:0] lru_decode_way_li;
-  logic [lce_assoc_p-2:0] lru_decode_data_lo;
-  logic [lce_assoc_p-2:0] lru_decode_mask_lo;
+  logic [dcache_way_width_lp-1:0] lru_decode_way_li;
+  logic [lce_dcache_assoc_p-2:0] lru_decode_data_lo;
+  logic [lce_dcache_assoc_p-2:0] lru_decode_mask_lo;
 
   bsg_lru_pseudo_tree_decode #(
-    .ways_p(lce_assoc_p)
+    .ways_p(lce_dcache_assoc_p)
   ) lru_decode (
     .way_id_i(lru_decode_way_li)
     ,.data_o(lru_decode_data_lo)
@@ -1012,12 +1013,18 @@ module bp_be_dcache
   );
   
 
-  logic [way_id_width_lp-1:0] dirty_mask_way_li;
+  logic [dcache_way_width_lp-1:0] dirty_mask_way_li;
   logic dirty_mask_v_li;
-  logic [lce_assoc_p-1:0] dirty_mask_lo;
+  logic [lce_dcache_assoc_p-1:0] dirty_mask_lo;
+
+  logic [dcache_way_width_lp-1:0] stat_mem_pkt_dcache_way_id;
+  if (lce_dcache_assoc_p == 1)
+    assign stat_mem_pkt_dcache_way_id = '0;
+  else
+    assign stat_mem_pkt_dcache_way_id = stat_mem_pkt.way_id;
 
   bsg_decode_with_v
-    #(.num_out_p(lce_assoc_p))
+    #(.num_out_p(lce_dcache_assoc_p))
     dirty_mask_decode
       (.i(dirty_mask_way_li)
       ,.v_i(dirty_mask_v_li)
@@ -1031,12 +1038,12 @@ module bp_be_dcache
       dirty_mask_v_li = store_op_tv_r;
       
       stat_mem_data_li.lru = lru_decode_data_lo;
-      stat_mem_data_li.dirty = {lce_assoc_p{1'b1}};
+      stat_mem_data_li.dirty = {lce_dcache_assoc_p{1'b1}};
       stat_mem_mask_li = {lru_decode_mask_lo, dirty_mask_lo};
     end
     else begin
-      lru_decode_way_li = stat_mem_pkt.way_id;
-      dirty_mask_way_li = stat_mem_pkt.way_id;
+      lru_decode_way_li = stat_mem_pkt_dcache_way_id;
+      dirty_mask_way_li = stat_mem_pkt_dcache_way_id;
       dirty_mask_v_li = 1'b1;
       case (stat_mem_pkt.opcode)
         e_cache_stat_mem_set_clear: begin
@@ -1045,7 +1052,7 @@ module bp_be_dcache
         end
         e_cache_stat_mem_clear_dirty: begin
           stat_mem_data_li = {(stat_info_width_lp){1'b0}};
-          stat_mem_mask_li.lru = {(lce_assoc_p-1){1'b0}};
+          stat_mem_mask_li.lru = {(lce_dcache_assoc_p-1){1'b0}};
           stat_mem_mask_li.dirty = dirty_mask_lo;
         end
         default: begin
@@ -1070,6 +1077,7 @@ module bp_be_dcache
   // LCE data_mem
   //
   logic [way_id_width_lp-1:0] data_mem_pkt_way_r;
+  logic [dcache_way_width_lp-1:0] rd_mux_butterfly_way;
 
   always_ff @ (posedge clk_i) begin
     if (data_mem_pkt_v_i & (data_mem_pkt.opcode == e_cache_data_mem_read)) begin
@@ -1077,13 +1085,19 @@ module bp_be_dcache
     end
   end
 
+  if (lce_dcache_assoc_p == 1)
+    assign rd_mux_butterfly_way = '0;
+  else
+    assign rd_mux_butterfly_way = data_mem_pkt_way_r[(way_id_width_lp-1)-:dcache_way_width_lp];
+
+
   bsg_mux_butterfly
    #(.width_p(dword_width_p)
     ,.els_p(lce_assoc_p))
     read_mux_butterfly
-    (.data_i(data_mem_data_lo)
-    ,.sel_i(data_mem_pkt_way_r)
-    ,.data_o(lce_data_mem_data_li)
+    (.data_i( data_mem_data_lo )
+    ,.sel_i( rd_mux_butterfly_way )
+    ,.data_o( lce_data_mem_data_li )
     );
   
   assign data_mem_o = lce_data_mem_data_li; 
@@ -1139,6 +1153,7 @@ module bp_be_dcache
   // LCE tag_mem
   
   logic [way_id_width_lp-1:0] tag_mem_pkt_way_r;
+  logic [dcache_way_width_lp-1:0] tag_mem_dcache_way;
 
   always_ff @ (posedge clk_i) begin
     if (tag_mem_pkt_v_i & (tag_mem_pkt.opcode == e_cache_tag_mem_read)) begin
@@ -1146,14 +1161,20 @@ module bp_be_dcache
     end
   end
 
-  assign tag_mem_o =  tag_mem_data_lo[tag_mem_pkt_way_r].tag;
+  // At assoc = 1, there is a 0 issue. This generate gets around it
+  if (lce_dcache_assoc_p == 1)
+    assign tag_mem_dcache_way = '0;
+  else
+    assign tag_mem_dcache_way = tag_mem_pkt_way_r[(way_id_width_lp-1)-:dcache_way_width_lp];
 
+  assign tag_mem_o =  tag_mem_data_lo[tag_mem_dcache_way].tag;
   assign tag_mem_pkt_ready = ~tl_we;
   
   // LCE stat_mem
   //
   assign stat_mem_pkt_ready = ~(v_tv_r & ~uncached_tv_r);
 
+  // This doesn't look like its used
   logic [way_id_width_lp-1:0] stat_mem_pkt_way_r;
 
   always_ff @ (posedge clk_i) begin
