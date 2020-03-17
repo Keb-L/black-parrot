@@ -573,7 +573,7 @@ module bp_be_dcache
     assign data_tv_col = data_tv_r;
   end
   else if (dmultiplier_p == 1) begin
-    assign data_tv_col = wbuf_entry_in.way_id[dmultiplier_p]
+    assign data_tv_col = wbuf_entry_in.way_id[0]
       ? data_tv_r[0+:dword_width_p] : data_tv_r[dword_width_p+:dword_width_p];
   end
   /*
@@ -1104,10 +1104,7 @@ module bp_be_dcache
     end
   en
 
-<<<<<<< HEAD
 
-=======
->>>>>>> 828a6a0cf51597c6f489c5ecf85d6ff9dcafde6a
   //  uncached load data logic
   //
   //synopsys sync_set_reset "reset_i"
