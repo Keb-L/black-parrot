@@ -565,15 +565,42 @@ module bp_be_dcache
   assign wbuf_entry_in.paddr = paddr_tv_r;
   assign wbuf_entry_in.way_id = store_hit_way;
 
+
+  // starting with the 4-way assoc
+  logic [dword_width_p-1:0] data_tv_col;
+  logic [way_id_width_lp:0] bank_sel;
+
+  assign bank_sel = wbuf_entry_in.way_id ^ wbuf_entry_in.paddr[byte_offset_width_lp+:word_offset_width_lp];
+
+  if (dmultiplier_p == 0) begin
+    assign data_tv_col = data_tv_r;
+  end
+  else if (dmultiplier_p == 1) begin
+    assign data_tv_col = wbuf_entry_in.way_id[dmultiplier_p]
+      ? data_tv_r[0+:dword_width_p] : data_tv_r[dword_width_p+:dword_width_p];
+  end
+  /*
+  else if (dmultiplier_p == 2) begin
+    if (bank[sel]) begin
+
+    end
+    assign data_op_tv_col_sel = wbuf_entry_in.way_id[dmultiplier_p] & ()
+  end
+  else if (dmultiplier_p == 4) begin
+
+  end
+  */
+
+
   // TODO: Add assertion, otherwise this will just infer latches....
   if (dword_width_p == 64) begin
     assign wbuf_entry_in.data = double_op_tv_r
-      ? data_tv_r
+      ? data_tv_col
       : (word_op_tv_r
-        ? {2{data_tv_r[0+:32]}}
+        ? {2{data_tv_col[0+:32]}}
         : (half_op_tv_r
-          ? {4{data_tv_r[0+:16]}}
-          : {8{data_tv_r[0+:8]}}));
+          ? {4{data_tv_col[0+:16]}}
+          : {8{data_tv_col[0+:8]}}));
 
     assign wbuf_entry_in.mask = double_op_tv_r
       ? 8'b1111_1111
@@ -1078,43 +1105,8 @@ module bp_be_dcache
         load_reserved_v_r <= 1'b0;
       end
     end
-  end
+  en
 
-
-
-  // TODO : instead of 0+ probably have to change it to assoc * dword_width_p when setting uncached_load_data_r
-  //        to choose the correct 64 bits 
-  // edit : it's not a static multiplier. it depends on which part of the data we're accessing
-  //        something like the following in pseudo code, then replace the 0+ with multiplier*dword_width_p+
-  //        This also assumes that the placement remains the same, we still have to figure out how writing to each
-  //        cache bank is gonna work
-  //
-  //
-  // if (assoc==8)
-  //    multiplier = 0;
-  // else if (assoc == 4)
-  //    if (way_id < 4) multiplier = 0;
-  //    else multiplier = 1;
-  // else if (assoc == 2)
-  //    if (bank == 0 or 2)
-  //        if (way_id < 4) multiplier = 0;
-  //        else multiplier = 1;
-  //    else 
-  //        if (way_id < 4) multiplier = 2;
-  //         else multiplier = 3;
-  // else
-  //    if (bank == 0)
-  //        if (way_id < 4) multiplier = 0;
-  //        else multiplier = 1;
-  //    else if (bank == 1)
-  //        if (way_id < 4) multiplier = 2;
-  //        else multiplier = 3;
-  //    else if (bank == 2)
-  //        if (way_id < 4) multiplier = 4;
-  //        else multiplier = 5;
-  //    else 
-  //        if (way_id < 4) multiplier = 6;
-  //        else multiplier = 7;
 
   //  uncached load data logic
   //
