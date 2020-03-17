@@ -583,7 +583,6 @@ module bp_be_dcache
   else if (dmultiplier_p == 2) begin
     if (bank[sel]) begin
 
-
     end
     assign data_op_tv_col_sel = wbuf_entry_in.way_id[dmultiplier_p] & ()
   end
