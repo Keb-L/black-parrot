@@ -101,7 +101,8 @@ module bp_be_dcache
     // LSB decoding 
     // 3-bit Way ID = {D-Cache Way ID, column index}
     , localparam dcache_way_width_lp=`BSG_SAFE_CLOG2(lce_dcache_assoc_p)
-    // , localparam dcache_col_width_lp=(way_id_width_lp-dcache_way_width_lp)
+    , localparam dcache_data_mask_width_lp=(dset_data_width_p >> 3)
+    , localparam dcache_col_width_lp=(way_id_width_lp-dcache_way_width_lp)
     // , localparam dcache_way_offset_lp=dcache_col_width_lp
 
     , localparam dcache_pkt_width_lp=`bp_be_dcache_pkt_width(page_offset_width_p,dword_width_p)
@@ -341,9 +342,9 @@ module bp_be_dcache
   logic [lce_dcache_assoc_p-1:0] data_mem_v_li;
   logic data_mem_w_li;
   logic [lce_dcache_assoc_p-1:0][index_width_lp+word_offset_width_lp-1:0] data_mem_addr_li;
-  logic [lce_dcache_assoc_p-1:0][dmultiplier_p-1:0][dword_width_p-1:0] data_mem_data_li;
-  logic [lce_dcache_assoc_p-1:0][dmultiplier_p-1:0][data_mask_width_lp-1:0] data_mem_mask_li;
-  logic [lce_dcache_assoc_p-1:0][dmultiplier_p-1:0][dword_width_p-1:0] data_mem_data_lo;
+  logic [lce_dcache_assoc_p-1:0][dset_data_width_p-1:0] data_mem_data_li;
+  logic [lce_dcache_assoc_p-1:0][dcache_data_mask_width_lp-1:0] data_mem_mask_li;
+  logic [lce_dcache_assoc_p-1:0][dset_data_width_p-1:0] data_mem_data_lo;
 
   // Generates 1, 2, 4, 8 bsg_mem_1rw_sync
   // lce_assoc_p -> lce_dcache_assoc_p
@@ -666,7 +667,7 @@ module bp_be_dcache
 
   // Packed Array
   // [d-cache associativity][dword columns][dword] 
-  logic [lce_dcache_assoc_p-1:0][dmultiplier_p-1:0][dword_width_p-1:0] lce_data_mem_data_li;
+  logic [lce_dcache_assoc_p-1:0][dmultiplier_p-1:0][dset_data_width_p-1:0] lce_data_mem_data_li;
 
   logic data_mem_pkt_ready;
   logic tag_mem_pkt_ready;
@@ -790,8 +791,20 @@ module bp_be_dcache
   assign tag_mem_pkt_ready_o = tag_mem_pkt_ready & ~cache_lock;
   assign stat_mem_pkt_ready_o = stat_mem_pkt_ready & ~cache_lock;
  
+  logic [dword_width_p-1:0] dword_data_way_picked; // Which dword got picked
   logic [dword_width_p-1:0] ld_data_way_picked;
   logic [dword_width_p-1:0] bypass_data_masked;
+
+  // bsg_mux #(
+  //   .width_p(dset_data_width_p)
+  //   ,.els_p(lce_dcache_assoc_p)
+  // ) ld_data_multi_dword_mux (
+  //   .data_i( ld_data_tv_r )
+  //   ,.sel_i(  )
+  //   ,.data_o( dword_data_way_picked )
+  // );
+
+
 
   bsg_mux #(
     .width_p(dword_width_p)
@@ -901,7 +914,7 @@ module bp_be_dcache
   assign data_mem_w_li = wbuf_yumi_li
     | (data_mem_pkt_v_i & data_mem_pkt.opcode == e_cache_data_mem_write);
 
-  // logic [lce_dcache_assoc_p-1:0][dmultiplier_p-1:0][dword_width_p-1:0] lce_data_mem_write_data;
+
   logic [lce_dcache_assoc_p-1:0][dset_data_width_p-1:0] lce_data_mem_write_data;
 
   for (genvar i = 0; i < lce_dcache_assoc_p; i++) begin
@@ -916,14 +929,40 @@ module bp_be_dcache
   
     assign data_mem_mask_li[i] = wbuf_yumi_li
       ? wbuf_entry_out_mask_ext
-      : {data_mask_width_lp{1'b1}};
+      : {dcache_data_mask_width_lp{1'b1}};
   end
 
+  // Extract the way id and column id from the wbuf_entry_out
+  logic [dcache_way_width_lp-1:0] wbuf_entry_out_way_id;
+  logic [dcache_col_width_lp-1:0] wbuf_entry_out_col_id;
+
+  if (lce_dcache_assoc_p == 1)
+    begin
+      assign wbuf_entry_out_way_id = '0;
+      assign wbuf_entry_out_col_id = wbuf_entry_out.way_id;
+    end
+  else if (lce_dcache_assoc_p == 8)
+    begin
+      assign wbuf_entry_out_way_id = wbuf_entry_out.way_id;
+      assign wbuf_entry_out_col_id = '0;
+    end
+  else
+    begin
+      assign wbuf_entry_out_way_id = wbuf_entry_out.way_id[dcache_col_width_lp+:dcache_way_width_lp];
+      assign wbuf_entry_out_col_id = wbuf_entry_out.way_id[dcache_col_width_lp-1:0];
+    end
+
+  // DWORD shifting of the mask and data
   logic [dmultiplier_p-1:0][data_mask_width_lp-1:0] wbuf_entry_out_mask_ext;
+  logic [dmultiplier_p-1:0][dword_width_p-1:0] wbuf_entry_out_data_ext;
+
   always_comb
     begin
        wbuf_entry_out_mask_ext = '0;
-       wbuf_entry_out_mask_ext[data_mem_pkt_dcache_col_id] = wbuf_entry_out.mask;
+       wbuf_entry_out_data_ext = '0;
+
+       wbuf_entry_out_mask_ext[wbuf_entry_out_col_id] = wbuf_entry_out.mask;
+       wbuf_entry_out_data_ext[wbuf_entry_out_col_id] = wbuf_entry_out.data;
     end
   
 
