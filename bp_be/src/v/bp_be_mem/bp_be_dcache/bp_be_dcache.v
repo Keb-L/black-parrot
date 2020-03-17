@@ -313,13 +313,13 @@ module bp_be_dcache
   logic tag_mem_v_li;
   logic tag_mem_w_li;
   logic [index_width_lp-1:0] tag_mem_addr_li;
-  bp_be_dcache_tag_info_s [lce_assoc_p-1:0] tag_mem_data_li;
-  bp_be_dcache_tag_info_s [lce_assoc_p-1:0] tag_mem_mask_li;
-  bp_be_dcache_tag_info_s [lce_assoc_p-1:0] tag_mem_data_lo;
+  bp_be_dcache_tag_info_s [lce_dcache_assoc_p-1:0] tag_mem_data_li;
+  bp_be_dcache_tag_info_s [lce_dcache_assoc_p-1:0] tag_mem_mask_li;
+  bp_be_dcache_tag_info_s [lce_dcache_assoc_p-1:0] tag_mem_data_lo;
   
   bsg_mem_1rw_sync_mask_write_bit
-    #(.width_p(tag_info_width_lp*lce_assoc_p)
-      ,.els_p(lce_sets_p)
+    #(.width_p(tag_info_width_lp*lce_dcache_assoc_p)
+      ,.els_p(lce_dcache_sets_p)
     )
     tag_mem
       (.clk_i(clk_i)
@@ -381,7 +381,7 @@ module bp_be_dcache
   logic uncached_tv_r;
   logic [paddr_width_p-1:0] paddr_tv_r;
   logic [dword_width_p-1:0] data_tv_r;
-  bp_be_dcache_tag_info_s [lce_assoc_p-1:0] tag_info_tv_r;
+  bp_be_dcache_tag_info_s [lce_dcache_assoc_p-1:0] tag_info_tv_r;
   logic [lce_dcache_assoc_p-1:0][dmultiplier_p-1:0][dword_width_p-1:0] ld_data_tv_r;
   logic [ptag_width_lp-1:0] addr_tag_tv;
   logic [index_width_lp-1:0] addr_index_tv;
@@ -540,8 +540,8 @@ module bp_be_dcache
   bp_be_dcache_wbuf
     #(.data_width_p(dword_width_p)
       ,.paddr_width_p(paddr_width_p)
-      ,.ways_p(lce_assoc_p)
-      ,.sets_p(lce_sets_p)
+      ,.ways_p(lce_dcache_assoc_p)
+      ,.sets_p(lce_dcache_sets_p)
       )
     wbuf
     ( .clk_i(clk_i)
@@ -882,7 +882,7 @@ module bp_be_dcache
   //
   logic [lce_assoc_p-1:0] wbuf_data_mem_v;
   bsg_decode #(
-    .num_out_p(lce_assoc_p)
+    .num_out_p(lce_dcache_assoc_p)
   ) wbuf_data_mem_v_decode (
     .i(wbuf_entry_out.way_id ^ wbuf_entry_out_word_offset)
     ,.o(wbuf_data_mem_v)
@@ -893,10 +893,10 @@ module bp_be_dcache
     & data_mem_pkt_v_i;
 
   assign data_mem_v_li = (load_op & tl_we)
-    ? {lce_assoc_p{1'b1}}
+    ? {lce_dcache_assoc_p{1'b1}}
     : (wbuf_yumi_li
       ? wbuf_data_mem_v
-      : {lce_assoc_p{lce_data_mem_v}});
+      : {lce_dcache_assoc_p{lce_data_mem_v}});
 
   assign data_mem_w_li = wbuf_yumi_li
     | (data_mem_pkt_v_i & data_mem_pkt.opcode == e_cache_data_mem_write);
@@ -909,15 +909,23 @@ module bp_be_dcache
       ? {addr_index, addr_word_offset}
       : (wbuf_yumi_li
         ? {wbuf_entry_out_index, wbuf_entry_out_word_offset}
-        : {data_mem_pkt.index, data_mem_pkt.way_id ^ ((word_offset_width_lp)'(i))});
+        : {data_mem_pkt.index, data_mem_pkt_dcache_way_id ^ ((word_offset_width_lp)'(i))});
     assign data_mem_data_li[i] = wbuf_yumi_li
       ? wbuf_entry_out.data
       : lce_data_mem_write_data[i];
   
     assign data_mem_mask_li[i] = wbuf_yumi_li
-      ? wbuf_entry_out.mask
+      ? wbuf_entry_out_mask_ext
       : {data_mask_width_lp{1'b1}};
   end
+
+  logic [dmultiplier_p-1:0][data_mask_width_lp-1:0] wbuf_entry_out_mask_ext;
+  always_comb
+    begin
+       wbuf_entry_out_mask_ext = '0;
+       wbuf_entry_out_mask_ext[data_mem_pkt_dcache_col_id] = wbuf_entry_out.mask;
+    end
+  
 
   // WRITE BUTTERFLY
   // We generate dmultiplier_p write muxes write to each column
@@ -957,35 +965,41 @@ module bp_be_dcache
 
   logic [lce_assoc_p-1:0] lce_tag_mem_way_one_hot;
   bsg_decode
-    #(.num_out_p(lce_assoc_p))
+    #(.num_out_p(lce_dcache_assoc_p))
     lce_tag_mem_way_decode
-      (.i(tag_mem_pkt.way_id)
+      (.i(tag_mem_pkt_dcache_way_id)
       ,.o(lce_tag_mem_way_one_hot)
       );
+
+  logic [dcache_way_width_lp-1:0] tag_mem_pkt_dcache_way_id;
+  if (lce_dcache_assoc_p == 1)
+    assign tag_mem_pkt_dcache_way_id = '0;
+  else
+    assign tag_mem_pkt_dcache_way_id = tag_mem_pkt.way_id;
 
   always_comb begin
     case (tag_mem_pkt.opcode)
       e_cache_tag_mem_set_clear: begin
-        tag_mem_data_li = {(tag_info_width_lp*lce_assoc_p){1'b0}};
-        tag_mem_mask_li = {(tag_info_width_lp*lce_assoc_p){1'b1}};
+        tag_mem_data_li = {(tag_info_width_lp*lce_dcache_assoc_p){1'b0}};
+        tag_mem_mask_li = {(tag_info_width_lp*lce_dcache_assoc_p){1'b1}};
       end
       e_cache_tag_mem_invalidate: begin
-        tag_mem_data_li = {((tag_info_width_lp)*lce_assoc_p){1'b0}};
-        for (integer i = 0; i < lce_assoc_p; i++) begin 
+        tag_mem_data_li = {((tag_info_width_lp)*lce_dcache_assoc_p){1'b0}};
+        for (integer i = 0; i < lce_dcache_assoc_p; i++) begin 
           tag_mem_mask_li[i].coh_state = {`bp_coh_bits{lce_tag_mem_way_one_hot[i]}};
           tag_mem_mask_li[i].tag = {ptag_width_lp{1'b0}};
         end
       end
       e_cache_tag_mem_set_tag: begin
         tag_mem_data_li = {lce_assoc_p{tag_mem_pkt.state, tag_mem_pkt.tag}};
-        for (integer i = 0; i < lce_assoc_p; i++) begin
+        for (integer i = 0; i < lce_dcache_assoc_p; i++) begin
           tag_mem_mask_li[i].coh_state = {`bp_coh_bits{lce_tag_mem_way_one_hot[i]}};
           tag_mem_mask_li[i].tag = {ptag_width_lp{lce_tag_mem_way_one_hot[i]}};
         end
       end
       default: begin
-        tag_mem_data_li = {(tag_info_width_lp*lce_assoc_p){1'b0}};
-        tag_mem_mask_li = {(tag_info_width_lp*lce_assoc_p){1'b0}};
+        tag_mem_data_li = {(tag_info_width_lp*lce_dcache_assoc_p){1'b0}};
+        tag_mem_mask_li = {(tag_info_width_lp*lce_dcache_assoc_p){1'b0}};
       end
     endcase
   end
@@ -1072,12 +1086,23 @@ module bp_be_dcache
   assign wbuf_yumi_li = wbuf_v_lo & ~(load_op & tl_we);
   assign bypass_v_li = tv_we & load_op_tl_r;
   assign lce_snoop_index_li = data_mem_pkt.index;
-  assign lce_snoop_way_li = data_mem_pkt.way_id;
+  assign lce_snoop_way_li = data_mem_pkt_dcache_way_id;
 
+  // Convert data_mem_pkt.way_id to the true way id (D$)
+  logic [dcache_way_width_lp-1:0] data_mem_pkt_dcache_way_id;
+  logic [(way_id_width_lp-dcache_way_width_lp-1):0] data_mem_pkt_dcache_col_id;
+  if (lce_dcache_assoc_p == 1)
+    begin
+      assign data_mem_pkt_dcache_way_id = '0;
+    end
+  else
+    begin
+      assign data_mem_pkt_dcache_way_id = data_mem_pkt.way_id[(way_id_width_lp-1)-:dcache_way_width_lp];
+    end
   // LCE data_mem
   //
   logic [way_id_width_lp-1:0] data_mem_pkt_way_r;
-  logic [dcache_way_width_lp-1:0] rd_mux_butterfly_way;
+  logic [dcache_way_width_lp-1:0] data_mem_pkt_way_r_dcache_way_id;
 
   always_ff @ (posedge clk_i) begin
     if (data_mem_pkt_v_i & (data_mem_pkt.opcode == e_cache_data_mem_read)) begin
@@ -1085,10 +1110,11 @@ module bp_be_dcache
     end
   end
 
+  // Convert the data_mem_pkt_way_r to the true way id (D$)
   if (lce_dcache_assoc_p == 1)
-    assign rd_mux_butterfly_way = '0;
+    assign data_mem_pkt_way_r_dcache_way_id = '0;
   else
-    assign rd_mux_butterfly_way = data_mem_pkt_way_r[(way_id_width_lp-1)-:dcache_way_width_lp];
+    assign data_mem_pkt_way_r_dcache_way_id = data_mem_pkt_way_r[(way_id_width_lp-1)-:dcache_way_width_lp];
 
 
   bsg_mux_butterfly
@@ -1096,7 +1122,7 @@ module bp_be_dcache
     ,.els_p(lce_assoc_p))
     read_mux_butterfly
     (.data_i( data_mem_data_lo )
-    ,.sel_i( rd_mux_butterfly_way )
+    ,.sel_i( data_mem_pkt_way_r_dcache_way_id )
     ,.data_o( lce_data_mem_data_li )
     );
   
@@ -1153,21 +1179,20 @@ module bp_be_dcache
   // LCE tag_mem
   
   logic [way_id_width_lp-1:0] tag_mem_pkt_way_r;
-  logic [dcache_way_width_lp-1:0] tag_mem_dcache_way;
+  logic [dcache_way_width_lp-1:0] tag_mem_pkt_way_r_dcache_way_id;
 
   always_ff @ (posedge clk_i) begin
     if (tag_mem_pkt_v_i & (tag_mem_pkt.opcode == e_cache_tag_mem_read)) begin
       tag_mem_pkt_way_r <= tag_mem_pkt.way_id;
     end
   end
-
-  // At assoc = 1, there is a 0 issue. This generate gets around it
+  // Convert the tag_mem_pkr_way_r to the true way_id
   if (lce_dcache_assoc_p == 1)
-    assign tag_mem_dcache_way = '0;
+    assign tag_mem_pkt_way_r_dcache_way_id = '0;
   else
-    assign tag_mem_dcache_way = tag_mem_pkt_way_r[(way_id_width_lp-1)-:dcache_way_width_lp];
+    assign tag_mem_pkt_way_r_dcache_way_id = tag_mem_pkt_way_r[(way_id_width_lp-1)-:dcache_way_width_lp];
 
-  assign tag_mem_o =  tag_mem_data_lo[tag_mem_dcache_way].tag;
+  assign tag_mem_o =  tag_mem_data_lo[tag_mem_pkt_way_r_dcache_way_id].tag;
   assign tag_mem_pkt_ready = ~tl_we;
   
   // LCE stat_mem
