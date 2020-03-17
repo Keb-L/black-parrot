@@ -585,17 +585,33 @@ module bp_be_dcache
     assign data_tv_col = wbuf_entry_in.way_id[0]
       ? data_tv_r[0+:dword_width_p] : data_tv_r[dword_width_p+:dword_width_p];
   end
-  /*
   else if (dmultiplier_p == 4) begin
-    if (bank[sel]) begin
-
-    end
-    assign data_op_tv_col_sel = wbuf_entry_in.way_id[dmultiplier_p] & ()
+    assign data_op_tv_col_sel = wbuf_entry_in.way_id[way_id_width_lp-1]
+      ? data_tv_r[3*dword_width_p+:dword_width_p] 
+      : (wbuf_entry_in.way_id[way_id_width_lp-2] 
+          ? data_tv_r[2*dword_width_p+:dword_width_p]
+          : (wbuf_entry_in.way_id[way_id_width_lp-3]
+            ? data_tv_r[dword_width_p+:dword_width_p]
+            : data_tv_r[0+:dword_width_p]));
   end
   else if (dmultiplier_p == 8) begin
+    assign data_op_tv_col_sel = wbuf_entry_in.way_id[way_id_width_lp-1]
+      ? data_tv_r[7*dword_width_p+:dword_width_p]
+      : (wbuf_entry_in.way_id[way_id_width_lp-2]
+        ? data_tv_r[6*dword_width_p+:dword_width_p]
+        : (wbuf_entry_in.way_id[way_id_width_lp-3]
+          ? data_tv_r[5*dword_width_p+:dword_width_p]
+          : (wbuf_entry_in.way_id[way_id_width_lp-4]
+            ? data_tv_r[4*dword_width_p+:dword_width_p]
+            : (wbuf_entry_in.way_id[way_id_width_lp-5]
+              ? data_tv_r[3*dword_width_p+:dword_width_p]
+              : (wbuf_entry_in.way_id[way_id_width_lp-6]
+                ? data_tv_r[2*dword_width_p+:dword_width_p]
+                : (wbuf_entry_in.way_id[way_id_width_lp-7]
+                  ? data_tv_r[dword_width_p+:dword_width_p]
+                  : data_tv_r[0+:dword_width_p]))))));
 
   end
-  */
 
 
   // TODO: Add assertion, otherwise this will just infer latches....

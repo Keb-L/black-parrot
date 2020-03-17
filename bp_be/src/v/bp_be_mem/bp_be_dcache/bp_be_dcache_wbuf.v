@@ -47,19 +47,10 @@ module bp_be_dcache_wbuf
     , output logic lce_snoop_match_o
   );
 
-  localparam dmultiplier_p = 0;
-
   `declare_bp_be_dcache_wbuf_entry_s(paddr_width_p, data_width_p, ways_p);
 
   bp_be_dcache_wbuf_entry_s wbuf_entry_in;
   assign wbuf_entry_in = wbuf_entry_i;
-
-  logic [63:0] wbuf_entry_data_col;
-  if (dmultiplier_p == 0) assign wbuf_entry_data_col = wbuf_entry_in.data;
-  else if (dmultiplier_p == 1) begin
-    assign wbuf_entry_data_col = wbuf_entry_in.way_id[0]
-      ? wbuf_entry_in.data[0+:64] : wbuf_entry_in.data[64+:64];
-  end
   
   bp_be_dcache_wbuf_entry_s wbuf_entry_el0;
   bp_be_dcache_wbuf_entry_s wbuf_entry_el1;
@@ -192,7 +183,7 @@ module bp_be_dcache_wbuf
     ,.segment_width_p(8) 
   ) mux_segmented_merge1 (
     .data0_i(el0or1_data)
-    ,.data1_i(wbuf_entry_data_col)
+    ,.data1_i(wbuf_entry_in.data)
     ,.sel_i(tag_hit2x4 & wbuf_entry_in.mask)
     ,.data_o(bypass_data_n)
   );
