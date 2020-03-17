@@ -201,6 +201,7 @@ module bp_be_dcache
   logic byte_op;
   logic [index_width_lp-1:0] addr_index;
   logic [word_offset_width_lp-1:0] addr_word_offset;
+  logic [word_offset_width_lp-1:0] addr_word_offset_shift;
 
   always_comb begin
     lr_op     = 1'b0;
@@ -262,7 +263,7 @@ module bp_be_dcache
 
   assign addr_index = dcache_pkt.page_offset[block_offset_width_lp+:index_width_lp];
   assign addr_word_offset = dcache_pkt.page_offset[byte_offset_width_lp+:word_offset_width_lp];
-  
+  assign addr_word_offset_shift = addr_word_offset >> dcache_col_width_lp;
   // TL stage
   //
   logic v_tl_r; // valid bit
@@ -387,6 +388,7 @@ module bp_be_dcache
   logic [ptag_width_lp-1:0] addr_tag_tv;
   logic [index_width_lp-1:0] addr_index_tv;
   logic [word_offset_width_lp-1:0] addr_word_offset_tv;
+  logic [word_offset_width_lp-1:0] addr_word_offset_shift_tv;
 
   assign tv_we = v_tl_r & ~poison_i & ~tlb_miss_i;
 
@@ -444,6 +446,7 @@ module bp_be_dcache
   assign addr_tag_tv = paddr_tv_r[block_offset_width_lp+index_width_lp+:ptag_width_lp];
   assign addr_index_tv = paddr_tv_r[block_offset_width_lp+:index_width_lp];
   assign addr_word_offset_tv = paddr_tv_r[byte_offset_width_lp+:word_offset_width_lp];
+  assign addr_word_offset_shift_tv = addr_word_offset_tv >> dcache_col_width_lp;
 
   // miss_detect
   //
@@ -541,8 +544,8 @@ module bp_be_dcache
   bp_be_dcache_wbuf
     #(.data_width_p(dword_width_p)
       ,.paddr_width_p(paddr_width_p)
-      ,.ways_p(lce_dcache_assoc_p)
-      ,.sets_p(lce_dcache_sets_p)
+      ,.ways_p(lce_assoc_p)
+      ,.sets_p(lce_sets_p)
       )
     wbuf
     ( .clk_i(clk_i)
@@ -568,9 +571,12 @@ module bp_be_dcache
       );
 
   logic [word_offset_width_lp-1:0] wbuf_entry_out_word_offset;
+  logic [word_offset_width_lp-1:0] wbuf_entry_out_word_offset_shift;
+
   logic [index_width_lp-1:0] wbuf_entry_out_index;
 
   assign wbuf_entry_out_word_offset = wbuf_entry_out.paddr[byte_offset_width_lp+:word_offset_width_lp];
+  assign wbuf_entry_out_word_offset_shift = wbuf_entry_out_word_offset >> dcache_col_width_lp;
   assign wbuf_entry_out_index = wbuf_entry_out.paddr[block_offset_width_lp+:index_width_lp];
 
   assign wbuf_entry_in.paddr = paddr_tv_r;
@@ -919,23 +925,29 @@ module bp_be_dcache
 
   for (genvar i = 0; i < lce_dcache_assoc_p; i++) begin
     assign data_mem_addr_li[i] = (load_op & tl_we)
-      ? {addr_index, addr_word_offset}
+      ? {addr_index, addr_word_offset_shift}  // We need to use the shifted value because we're effectively reducing the number of word offsets
       : (wbuf_yumi_li
-        ? {wbuf_entry_out_index, wbuf_entry_out_word_offset}
+        ? {wbuf_entry_out_index, wbuf_entry_out_word_offset_shift}
         : {data_mem_pkt.index, data_mem_pkt_dcache_way_id ^ ((word_offset_width_lp)'(i))});
     assign data_mem_data_li[i] = wbuf_yumi_li
-      ? wbuf_entry_out.data
-      : lce_data_mem_write_data[i];
+      ? wbuf_entry_out_data_ext     // from the write buffer
+      : lce_data_mem_write_data[i]; // From the butterfly mux
   
     assign data_mem_mask_li[i] = wbuf_yumi_li
-      ? wbuf_entry_out_mask_ext
-      : {dcache_data_mask_width_lp{1'b1}};
+      ? wbuf_entry_out_mask_ext             // Write buffer mask, extended to cache line width
+      : {dcache_data_mask_width_lp{1'b1}};  // All pass mask, extended to cache line width
   end
 
   // Extract the way id and column id from the wbuf_entry_out
   logic [dcache_way_width_lp-1:0] wbuf_entry_out_way_id;
   logic [dcache_col_width_lp-1:0] wbuf_entry_out_col_id;
 
+  // DEBUG ASSIGN
+  logic [way_id_width_lp-1:0] wbuf_entry_out_input_way_id;
+  assign wbuf_entry_out_input_way_id = wbuf_entry_out.way_id;
+  // ------
+
+  // Write Buffer {way id, col id} decode generate by associativity
   if (lce_dcache_assoc_p == 1)
     begin
       assign wbuf_entry_out_way_id = '0;
@@ -955,7 +967,7 @@ module bp_be_dcache
   // DWORD shifting of the mask and data
   logic [dmultiplier_p-1:0][data_mask_width_lp-1:0] wbuf_entry_out_mask_ext;
   logic [dmultiplier_p-1:0][dword_width_p-1:0] wbuf_entry_out_data_ext;
-
+ 
   always_comb
     begin
        wbuf_entry_out_mask_ext = '0;
@@ -971,6 +983,17 @@ module bp_be_dcache
   // logic [dmultiplier_p-1:0][lce_dcache_assoc_p-1:0][dword_width_p-1:0] mux_butterfly_data;
   logic [lce_dcache_assoc_p-1:0][dset_data_width_p-1:0] wr_mux_butterfly_data;
   logic [dcache_way_width_lp-1:0] wr_mux_butterfly_way;
+
+  // DEBUG ASSIGN
+  logic [(lce_assoc_p*lce_sets_p)-1:0]  data_mem_pkt_data;
+  logic [way_id_width_lp-1:0] data_mem_pkt_way;
+  logic [index_width_lp-1:0] data_mem_pkt_index;
+  
+  assign data_mem_pkt_data = data_mem_pkt.data;
+  assign data_mem_pkt_way = data_mem_pkt.way_id;
+  assign data_mem_pkt_index = data_mem_pkt.index;
+  // ----
+
   assign wr_mux_butterfly_data = data_mem_pkt.data;
 
   // Decode 3 bit UCE way id into the column id (MSB) and the way id everything else
@@ -1070,11 +1093,25 @@ module bp_be_dcache
   logic dirty_mask_v_li;
   logic [lce_dcache_assoc_p-1:0] dirty_mask_lo;
 
+  /// data_mem_pkt {way id, col id} decode generate by associativity
   logic [dcache_way_width_lp-1:0] stat_mem_pkt_dcache_way_id;
+  logic [dcache_col_width_lp-1:0] stat_mem_pkt_dcache_col_id;
   if (lce_dcache_assoc_p == 1)
-    assign stat_mem_pkt_dcache_way_id = '0;
+    begin
+      assign stat_mem_pkt_dcache_way_id = '0;
+      assign stat_mem_pkt_dcache_col_id = data_mem_pkt.way_id;
+    end
+  else if(lce_dcache_assoc_p == 8)
+    begin
+      assign stat_mem_pkt_dcache_way_id = stat_mem_pkt.way_id;
+      assign stat_mem_pkt_dcache_col_id = '0;
+    end
   else
-    assign stat_mem_pkt_dcache_way_id = stat_mem_pkt.way_id;
+    begin
+      assign stat_mem_pkt_dcache_way_id = stat_mem_pkt.way_id[dcache_col_width_lp+:dcache_way_width_lp];
+      assign stat_mem_pkt_dcache_col_id = data_mem_pkt.way_id[dcache_col_width_lp-1:0];
+    end
+
 
   bsg_decode_with_v
     #(.num_out_p(lce_dcache_assoc_p))
@@ -1127,41 +1164,46 @@ module bp_be_dcache
   assign lce_snoop_index_li = data_mem_pkt.index;
   assign lce_snoop_way_li = data_mem_pkt_dcache_way_id;
 
-  // Convert data_mem_pkt.way_id to the true way id (D$)
+  /// data_mem_pkt {way id, col id} decode generate by associativity
   logic [dcache_way_width_lp-1:0] data_mem_pkt_dcache_way_id;
-  logic [(way_id_width_lp-dcache_way_width_lp-1):0] data_mem_pkt_dcache_col_id;
+  logic [dcache_col_width_lp-1:0] data_mem_pkt_dcache_col_id;
   if (lce_dcache_assoc_p == 1)
     begin
       assign data_mem_pkt_dcache_way_id = '0;
+      assign data_mem_pkt_dcache_col_id = data_mem_pkt.way_id;
+    end
+  else if(lce_dcache_assoc_p == 8)
+    begin
+      assign data_mem_pkt_dcache_way_id = data_mem_pkt.way_id;
+      assign data_mem_pkt_dcache_col_id = '0;
     end
   else
     begin
-      assign data_mem_pkt_dcache_way_id = data_mem_pkt.way_id[(way_id_width_lp-1)-:dcache_way_width_lp];
+      assign data_mem_pkt_dcache_way_id = data_mem_pkt.way_id[dcache_col_width_lp+:dcache_way_width_lp];
+      assign data_mem_pkt_dcache_col_id = data_mem_pkt.way_id[dcache_col_width_lp-1:0];
     end
+
+
   // LCE data_mem
   //
   logic [way_id_width_lp-1:0] data_mem_pkt_way_r;
-  logic [dcache_way_width_lp-1:0] data_mem_pkt_way_r_dcache_way_id;
+  logic [dcache_way_width_lp-1:0] data_mem_pkt_dcache_way_id_r;
+  logic [dcache_col_width_lp-1:0] data_mem_pkt_dcache_col_id_r;
 
   always_ff @ (posedge clk_i) begin
     if (data_mem_pkt_v_i & (data_mem_pkt.opcode == e_cache_data_mem_read)) begin
       data_mem_pkt_way_r <= data_mem_pkt.way_id;
+      data_mem_pkt_dcache_way_id_r <= data_mem_pkt_dcache_way_id;
+      data_mem_pkt_dcache_col_id_r <= data_mem_pkt_dcache_col_id;
     end
   end
-
-  // Convert the data_mem_pkt_way_r to the true way id (D$)
-  if (lce_dcache_assoc_p == 1)
-    assign data_mem_pkt_way_r_dcache_way_id = '0;
-  else
-    assign data_mem_pkt_way_r_dcache_way_id = data_mem_pkt_way_r[(way_id_width_lp-1)-:dcache_way_width_lp];
-
 
   bsg_mux_butterfly
    #(.width_p(dword_width_p)
     ,.els_p(lce_assoc_p))
     read_mux_butterfly
     (.data_i( data_mem_data_lo )
-    ,.sel_i( data_mem_pkt_way_r_dcache_way_id )
+    ,.sel_i( data_mem_pkt_dcache_way_id )
     ,.data_o( lce_data_mem_data_li )
     );
   
