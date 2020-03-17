@@ -347,7 +347,7 @@ module bp_be_dcache
 
   // Generates 1, 2, 4, 8 bsg_mem_1rw_sync
   // lce_assoc_p -> lce_dcache_assoc_p
-  for (genvar i = 0; i < lce_assoc_p; i++) begin: data_mem
+  for (genvar i = 0; i < lce_dcache_assoc_p; i++) begin: data_mem
     bsg_mem_1rw_sync_mask_write_byte
       #(.data_width_p(dset_data_width_p) 
         ,.els_p(lce_dcache_sets_p*lce_dcache_assoc_p)
@@ -901,9 +901,9 @@ module bp_be_dcache
     | (data_mem_pkt_v_i & data_mem_pkt.opcode == e_cache_data_mem_write);
 
   // logic [lce_dcache_assoc_p-1:0][dmultiplier_p-1:0][dword_width_p-1:0] lce_data_mem_write_data;
-  logic [lce_assoc_p-1:0][dword_width_p-1:0] lce_data_mem_write_data;
+  logic [lce_dcache_assoc_p-1:0][dset_data_width_p-1:0] lce_data_mem_write_data;
 
-  for (genvar i = 0; i < lce_assoc_p; i++) begin
+  for (genvar i = 0; i < lce_dcache_assoc_p; i++) begin
     assign data_mem_addr_li[i] = (load_op & tl_we)
       ? {addr_index, addr_word_offset}
       : (wbuf_yumi_li
@@ -921,24 +921,29 @@ module bp_be_dcache
   // WRITE BUTTERFLY
   // We generate dmultiplier_p write muxes write to each column
   // logic [dmultiplier_p-1:0][lce_dcache_assoc_p-1:0][dword_width_p-1:0] mux_butterfly_data;
-  logic [lce_dcache_assoc_p-1:0][dword_width_p-1:0] mux_butterfly_data;
+  logic [lce_dcache_assoc_p-1:0][dset_data_width_p-1:0] mux_butterfly_data;
+  logic [way_id_width_lp-1:0] mux_butterfly_way;
   assign mux_butterfly_data = data_mem_pkt.data;
 
   // Decode 3 bit UCE way id into the column id (MSB) and the way id everything else
-  // assign mux_butterfly_way = data_mem_pkt.way_id[dcache_way_width_lp-1:dcache_way_offset_lp];
-  assign mux_butterfly_way = data_mem_pkt.way_id[2:0];
-  // assign mux_butterfly_col = data_mem_pkt.way_id[dcache_way_width_lp+:dcache_col_width_lp];
+  // Generator if statement for when dcache assoc = 1
+  //  In this scenario, there is only 1 way (0-bit value)
+  if (lce_dcache_assoc_p == 1)
+    assign mux_butterfly_way = data_mem_pkt.way_id[dcache_way_width_lp-1:dcache_way_offset_lp];
+  else
+    assign mux_butterfly_way = '0;
 
-  for (genvar i = 0; i < dmultiplier_p; i++) begin
-    bsg_mux_butterfly #(
-      .width_p(dword_width_p)
-      ,.els_p(lce_dcache_assoc_p)
-    ) write_mux_butterfly (
-      .data_i( mux_butterfly_data )
-      ,.sel_i( mux_butterfly_way )
-      ,.data_o(lce_data_mem_write_data)
-    );
-  end
+  // mux butterfly will now swap blocks of 64, 128, 256, 512 bits based on the associativity
+  // We use the LSB to indicate the columns
+  // SEE https://docs.google.com/presentation/d/1mMzWhTA8WwRPAZyEWUC-aKF5MDe_vluYyOzZNz-gprE/edit#slide=id.g818676014a_0_18
+  bsg_mux_butterfly #(
+    .width_p( dset_data_width_p )
+    ,.els_p(lce_dcache_assoc_p)
+  ) write_mux_butterfly (
+    .data_i( mux_butterfly_data )
+    ,.sel_i( mux_butterfly_way )
+    ,.data_o(lce_data_mem_write_data)
+  );
 
  
   // tag_mem
