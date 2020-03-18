@@ -262,7 +262,8 @@ module bp_be_dcache
 
   assign addr_index = dcache_pkt.page_offset[block_offset_width_lp+:index_width_lp];
   assign addr_word_offset = dcache_pkt.page_offset[byte_offset_width_lp+:word_offset_width_lp];
-  assign addr_word_offset_shift = addr_word_offset >> dcache_col_width_lp;
+  assign addr_word_offset_shift = addr_word_offset >> dcache_col_width_lp; // way id
+  assign addr_word_col_id = addr_word_offset & {{dcache_way_width_lp{1'b0}}, {dcache_col_width_lp{1'b1}}}; // col id
 
   // TL stage
   //
@@ -345,6 +346,8 @@ module bp_be_dcache
   logic [lce_dcache_assoc_p-1:0][dcache_data_mask_width_lp-1:0] data_mem_mask_li;
   logic [lce_dcache_assoc_p-1:0][dset_data_width_p-1:0] data_mem_data_lo;
 
+  logic [lce_dcache_assoc_p-1:0][dcache_col_width_lp-1:0] data_mem_col_id;
+
   // Modified the parameters of the memory to scale properly with associativity
   // When associativity decreases, the data width increases in order to
   // compensate for the loss of width. (512 bits required by DRAM)
@@ -383,11 +386,13 @@ module bp_be_dcache
   logic [paddr_width_p-1:0] paddr_tv_r;
   logic [dword_width_p-1:0] data_tv_r;
   bp_be_dcache_tag_info_s [lce_assoc_p-1:0] tag_info_tv_r;  // TODO
-  logic [lce_assoc_p-1:0][dword_width_p-1:0] ld_data_tv_r;  // TODO
+  logic [lce_dcache_assoc_p-1:0][dset_data_width_p-1:0] ld_data_tv_r;  // KL : matched size of data_mem_data_lo
   logic [ptag_width_lp-1:0] addr_tag_tv;
   logic [index_width_lp-1:0] addr_index_tv;
   logic [word_offset_width_lp-1:0] addr_word_offset_tv;
   logic [word_offset_width_lp-1:0] addr_word_offset_shift_tv; // KL: Tag verify word offset should only use upper bits.
+
+  logic [dcache_col_width_lp-1:0] data_mem_col_id_r;
 
   assign tv_we = v_tl_r & ~poison_i & ~tlb_miss_i;
 
@@ -434,6 +439,7 @@ module bp_be_dcache
 
       if (tv_we & load_op_tl_r) begin
         ld_data_tv_r <= data_mem_data_lo;
+        data_mem_col_id_r <= data_mem_col_id; 
       end
 
       if (tv_we & store_op_tl_r) begin
@@ -794,33 +800,36 @@ module bp_be_dcache
  
 
   // KL: data_mem output to final data
-  logic [dword_width_p-1:0] dword_way_picked;     // dword selected result
-  logic [dword_width_p-1:0] ld_data_way_picked;
+  logic [dset_data_width_p-1:0] ld_data_way_picked;
+  logic [dword_width_p-1:0] dword_picked;     // dword selected result
   logic [dword_width_p-1:0] bypass_data_masked;
 
-  // bsg_mux #(
-  //   .width_p(dset_data_width_p)
-  //   ,.els_p(lce_dcache_assoc_p)
-  // ) ld_data_multi_dword_mux (
-  //   .data_i( ld_data_tv_r )
-  //   ,.sel_i(  )
-  //   ,.data_o( dword_way_picked )
-  // );
-
+  // This mux selects one of the ways
   bsg_mux #(
-    .width_p(dword_width_p)
-    ,.els_p(lce_assoc_p)
+    .width_p(dset_data_width_p)
+    ,.els_p(lce_dcache_assoc_p)
   ) ld_data_set_select_mux (
-    .data_i(ld_data_tv_r)
-    ,.sel_i(load_hit_way ^ addr_word_offset_tv)
-    ,.data_o(ld_data_way_picked)
+    .data_i( ld_data_tv_r )
+    ,.sel_i(load_hit_way ^ addr_word_offset_shift_tv) 
+    ,.data_o(ld_data_way_picked)  // Change this to dset_data_width_p
   );
 
+  // Assign by column (mux to dword)
+  bsg_mux #(
+    .width_p( dword_width_p ) // 64 bit dwords
+    ,.els_p( dmultiplier_p )  // number of dwords
+  ) ld_data_multi_dword_mux (
+    .data_i( ld_data_way_picked )
+    ,.sel_i( ~data_mem_col_id_r )
+    ,.data_o( dword_picked )
+  );
+  
+  // Splices together between dword_picked and bypass_data_lo
   bsg_mux_segmented #(
     .segments_p(data_mask_width_lp)
     ,.segment_width_p(8)
   ) bypass_mux_segmented (
-    .data0_i(ld_data_way_picked)
+    .data0_i( dword_picked )
     ,.data1_i(bypass_data_lo)
     ,.sel_i(bypass_mask_lo)
     ,.data_o(bypass_data_masked)
@@ -930,6 +939,12 @@ module bp_be_dcache
     assign data_mem_mask_li[i] = wbuf_yumi_li
       ? wbuf_entry_out_mask_ext             // from the write buffer, extended to 64*multiplier bits
       : {dcache_data_mask_width_lp{1'b1}};  // all pass mask, extended to 64*multiplier bits
+
+    assign data_mem_col_id[i] = (load_op & tl_we)
+      ? { addr_word_col_id }  // We need to use the shifted value because we're effectively reducing the number of word offsets
+      : (wbuf_yumi_li
+        ? {wbuf_entry_out_index, wbuf_entry_out_word_offset_shift}
+        : { data_mem_pkt_col_id });
   end
 
 
