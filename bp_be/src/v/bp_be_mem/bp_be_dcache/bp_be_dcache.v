@@ -93,6 +93,8 @@ module bp_be_dcache
     , localparam word_offset_width_lp=`BSG_SAFE_CLOG2(block_size_in_words_lp)
     , localparam block_offset_width_lp=(word_offset_width_lp+byte_offset_width_lp)
     , localparam index_width_lp=`BSG_SAFE_CLOG2(lce_sets_p)
+    , localparam index_width_col_lp ='BSG_SAFE_CLOG2(dsets_data_width_p)
+
     , localparam ptag_width_lp=(paddr_width_p-bp_page_offset_width_gp)
     , localparam way_id_width_lp=`BSG_SAFE_CLOG2(lce_dcache_assoc_p)
   
@@ -641,7 +643,7 @@ module bp_be_dcache
 
   logic stat_mem_v_li;
   logic stat_mem_w_li;
-  logic [index_width_lp-1:0] stat_mem_addr_li;
+  logic [index_width_col_lp-1:0] stat_mem_addr_li;
   bp_be_dcache_stat_info_s stat_mem_data_li;
   bp_be_dcache_stat_info_s stat_mem_mask_li;
   bp_be_dcache_stat_info_s stat_mem_data_lo;
@@ -931,6 +933,8 @@ module bp_be_dcache
 
   logic [lce_assoc_p-1:0][dword_width_p-1:0] lce_data_mem_write_data;
 
+
+  /*
   // select which column of 64 bits is chosen
   logic [dword_width_p-1:0] wbuf_entry_out_col;
 
@@ -948,6 +952,8 @@ module bp_be_dcache
             ? wbuf_entry_out.data[dword_width_p+:dword_width_p]
             : wbuf_entry_out.data[0+:dword_width_p]));
   end
+  */
+
 
   for (genvar i = 0; i < lce_dcache_assoc_p; i++) begin
     assign data_mem_addr_li[i] = (load_op & tl_we)
@@ -1147,6 +1153,8 @@ module bp_be_dcache
 
   // choose the correct data column depending on the associativity
   // TODO : add support for 2/1 associativity
+
+  /*
   logic [dword_width_p-1:0] uncached_load_data_n;
 
   if (dmultiplier_p == 1) assign uncached_load_data_n = data_mem_pkt.data[0+:dword_width_p];
@@ -1163,6 +1171,8 @@ module bp_be_dcache
             ? data_mem_pkt.data[dword_width_p+:dword_width_p]
             : data_mem_pkt.data[0+:dword_width_p]));
   end
+  */
+
 
   always_ff @ (posedge clk_i) begin
     if (reset_i) begin
