@@ -200,7 +200,7 @@ module bp_be_dcache
   logic byte_op;
   logic [index_width_lp-1:0] addr_index;
   logic [word_offset_width_lp-1:0] addr_word_offset;
-  logic [word_offset_width_lp-1:0] addr_word_offset_shift; // KL: LSB, the word offset ignores the lowest bit
+  logic [dcache_way_width_lp-1:0] addr_word_offset_shift; // KL: LSB, the word offset ignores the lowest bit
 
   always_comb begin
     lr_op     = 1'b0;
@@ -263,7 +263,7 @@ module bp_be_dcache
   assign addr_index = dcache_pkt.page_offset[block_offset_width_lp+:index_width_lp];
   assign addr_word_offset = dcache_pkt.page_offset[byte_offset_width_lp+:word_offset_width_lp];
   assign addr_word_offset_shift = addr_word_offset >> dcache_col_width_lp; // way id
-  assign addr_word_col_id = addr_word_offset & {{dcache_way_width_lp{1'b0}}, {dcache_col_width_lp{1'b1}}}; // col id
+  assign addr_word_col_id = addr_word_offset ~& {{dcache_way_width_lp{1'b0}}, {dcache_col_width_lp{1'b1}}}; // col id
 
   // TL stage
   //
@@ -341,12 +341,15 @@ module bp_be_dcache
   // KL: Modified width to match the new associativity
   logic [lce_dcache_assoc_p-1:0] data_mem_v_li;
   logic data_mem_w_li;
-  logic [lce_dcache_assoc_p-1:0][index_width_lp+word_offset_width_lp-1:0] data_mem_addr_li;
+  logic [lce_dcache_assoc_p-1:0][index_width_lp+dcache_way_width_lp-1:0] data_mem_addr_li; // TODO: Modify the width of this
   logic [lce_dcache_assoc_p-1:0][dset_data_width_p-1:0] data_mem_data_li;
   logic [lce_dcache_assoc_p-1:0][dcache_data_mask_width_lp-1:0] data_mem_mask_li;
   logic [lce_dcache_assoc_p-1:0][dset_data_width_p-1:0] data_mem_data_lo;
 
   logic [lce_dcache_assoc_p-1:0][dcache_col_width_lp-1:0] data_mem_col_id;
+
+  logic [lce_dcache_assoc_p-1:0][index_width_lp-1:0] DEBUG_data_mem_addr_index;
+  logic [lce_dcache_assoc_p-1:0][dcache_way_width_lp-1:0] DEBUG_data_mem_addr_word;
 
   // Modified the parameters of the memory to scale properly with associativity
   // When associativity decreases, the data width increases in order to
@@ -390,7 +393,7 @@ module bp_be_dcache
   logic [ptag_width_lp-1:0] addr_tag_tv;
   logic [index_width_lp-1:0] addr_index_tv;
   logic [word_offset_width_lp-1:0] addr_word_offset_tv;
-  logic [word_offset_width_lp-1:0] addr_word_offset_shift_tv; // KL: Tag verify word offset should only use upper bits.
+  logic [dcache_way_width_lp-1:0] addr_word_offset_shift_tv; // KL: Tag verify word offset should only use upper bits.
 
   logic [dcache_col_width_lp-1:0] data_mem_col_id_r;
 
@@ -576,7 +579,7 @@ module bp_be_dcache
       );
 
   logic [word_offset_width_lp-1:0] wbuf_entry_out_word_offset;
-  logic [word_offset_width_lp-1:0] wbuf_entry_out_word_offset_shift;   // KL: Word offset ignores the LSBs when we reduce associativity
+  logic [dcache_way_width_lp-1:0] wbuf_entry_out_word_offset_shift;   // KL: Word offset ignores the LSBs when we reduce associativity
   logic [index_width_lp-1:0] wbuf_entry_out_index;
 
   assign wbuf_entry_out_word_offset = wbuf_entry_out.paddr[byte_offset_width_lp+:word_offset_width_lp];
@@ -820,7 +823,7 @@ module bp_be_dcache
     ,.els_p( dmultiplier_p )  // number of dwords
   ) ld_data_multi_dword_mux (
     .data_i( ld_data_way_picked )
-    ,.sel_i( ~data_mem_col_id_r )
+    ,.sel_i( data_mem_col_id_r )
     ,.data_o( dword_picked )
   );
   
@@ -907,7 +910,7 @@ module bp_be_dcache
   bsg_decode #(
     .num_out_p(lce_dcache_assoc_p)  // KL: updated associativity
   ) wbuf_data_mem_v_decode (
-    .i(wbuf_entry_out.way_id ^ wbuf_entry_out_word_offset)
+    .i(wbuf_entry_out_way_id ^ wbuf_entry_out_word_offset_shift)
     ,.o(wbuf_data_mem_v)
   );  
 
@@ -930,8 +933,8 @@ module bp_be_dcache
     assign data_mem_addr_li[i] = (load_op & tl_we)
       ? {addr_index, addr_word_offset_shift}  // We use shifted value in order to select the correct word
       : (wbuf_yumi_li
-        ? {wbuf_entry_out_index, wbuf_entry_out_word_offset}
-        : {data_mem_pkt.index, data_mem_pkt_way_id ^ ((word_offset_width_lp)'(i))});  // modified way id according to associativity
+        ? {wbuf_entry_out_index, wbuf_entry_out_word_offset_shift}
+        : {data_mem_pkt.index, data_mem_pkt_way_id ^ ((dcache_way_width_lp)'(i))});  // modified way id according to associativity
     assign data_mem_data_li[i] = wbuf_yumi_li
       ? wbuf_entry_out_data_ext       // from the write buffer, extended to 64*multiplier bits
       : lce_data_mem_write_data[i];   // from butterfly (dcache pkt)
@@ -945,7 +948,21 @@ module bp_be_dcache
       : (wbuf_yumi_li
         ? {wbuf_entry_out_index, wbuf_entry_out_word_offset_shift}
         : { data_mem_pkt_col_id });
+
+    assign {DEBUG_data_mem_addr_index[i], DEBUG_data_mem_addr_word[i]}  = data_mem_addr_li[i];
+    assign DEBUG_data_mem_word[i] = data_mem_pkt_way_id ^ ((dcache_way_width_lp)'(i));
+    assign DEBUG_data_mem_word_orig[i] = data_mem_pkt_way_id ^ ((word_offset_width_lp)'(i));
   end
+
+  // DEBUG
+  logic [(lce_assoc_p*lce_sets_p)-1:0] DEBUG_data_mem_pkt_data;
+  logic [way_id_width_lp-1:0] DEBUG_data_mem_pkt_way;
+  logic [index_width_lp-1:0] DEBUG_data_mem_pkt_index;
+  logic [lce_dcache_assoc_p-1:0][dcache_way_width_lp-1:0] DEBUG_data_mem_word, DEBUG_data_mem_word_orig;
+  
+  assign DEBUG_data_mem_pkt_data = data_mem_pkt.data;
+  assign DEBUG_data_mem_pkt_way = data_mem_pkt.way_id;
+  assign DEBUG_data_mem_pkt_index = data_mem_pkt.index;
 
 
   // NOTE: {{dcache_way_width_lp{1'b0}}, {dcache_col_width_lp{1'b1}}} is used to create a 3-bit mask for the way id
@@ -970,7 +987,7 @@ module bp_be_dcache
   logic [dcache_way_width_lp-1:0] wbuf_entry_out_way_id;
   logic [dcache_col_width_lp-1:0] wbuf_entry_out_col_id;
   assign wbuf_entry_out_way_id = wbuf_entry_out.way_id >> dcache_col_width_lp;  
-  assign wbuf_entry_out_col_id = wbuf_entry_out.way_id & {{dcache_way_width_lp{1'b0}}, {dcache_col_width_lp{1'b1}}};  
+  assign wbuf_entry_out_col_id = wbuf_entry_out.way_id ~& {{dcache_way_width_lp{1'b0}}, {dcache_col_width_lp{1'b1}}};  
 
   // DWORD shifting of the mask and data
   logic [dmultiplier_p-1:0][data_mask_width_lp-1:0] wbuf_entry_out_mask_ext;
@@ -993,7 +1010,7 @@ module bp_be_dcache
 
   assign data_mem_pkt_data   = data_mem_pkt.data;
   assign data_mem_pkt_way_id = data_mem_pkt.way_id >> dcache_col_width_lp; // Shift by 0-3 bits
-  assign data_mem_pkt_col_id = data_mem_pkt.way_id & {{dcache_way_width_lp{1'b0}}, {dcache_col_width_lp{1'b1}}}; 
+  assign data_mem_pkt_col_id = data_mem_pkt.way_id ~& {{dcache_way_width_lp{1'b0}}, {dcache_col_width_lp{1'b1}}}; 
 
   bsg_mux_butterfly#(
     .width_p( dset_data_width_p )
@@ -1132,19 +1149,22 @@ module bp_be_dcache
   // LCE data_mem
   //
   logic [way_id_width_lp-1:0] data_mem_pkt_way_r;
+  logic [dcache_way_width_lp-1:0] data_mem_pkt_way_id_r;
 
   always_ff @ (posedge clk_i) begin
     if (data_mem_pkt_v_i & (data_mem_pkt.opcode == e_cache_data_mem_read)) begin
       data_mem_pkt_way_r <= data_mem_pkt.way_id;
+      data_mem_pkt_way_id_r <= data_mem_pkt_way_id;
     end
   end
 
+  // TODO
   bsg_mux_butterfly
-   #(.width_p(dword_width_p)
-    ,.els_p(lce_assoc_p))
+   #(.width_p(dset_data_width_p)
+    ,.els_p(lce_dcache_assoc_p))
     read_mux_butterfly
     (.data_i(data_mem_data_lo)
-    ,.sel_i(data_mem_pkt_way_r)
+    ,.sel_i(data_mem_pkt_way_id_r)
     ,.data_o(lce_data_mem_data_li)
     );
   
