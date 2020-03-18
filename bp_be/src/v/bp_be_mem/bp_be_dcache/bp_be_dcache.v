@@ -523,15 +523,6 @@ module bp_be_dcache
   logic [index_width_lp-1:0] lce_snoop_index_li;
   logic [way_id_width_lp-1:0] lce_snoop_way_li;
   logic lce_snoop_match_lo; 
-
-  // select which column of 64 bits is chosen
-  logic [dword_width_p-1:0] wbuf_entry_out_col;
-
-  if (dmultiplier_p == 1) assign wbuf_entry_out_col = wbuf_entry_out.data;
-  else if (dmultiplier_p == 2) begin
-    assign wbuf_entry_out_col = wbuf_entry_out.way_id[0]
-      ? wbuf_entry_out.data[0+:dword_width_p] : wbuf_entry_out.data[dword_width_p+:dword_width_p];
-  end
  
   bp_be_dcache_wbuf
     #(.data_width_p(dword_width_p)
@@ -586,7 +577,7 @@ module bp_be_dcache
       ? data_tv_r[0+:dword_width_p] : data_tv_r[dword_width_p+:dword_width_p];
   end
   else if (dmultiplier_p == 4) begin
-    assign data_op_tv_col_sel = wbuf_entry_in.way_id[way_id_width_lp-1]
+    assign data_tv_col = wbuf_entry_in.way_id[way_id_width_lp-1]
       ? data_tv_r[3*dword_width_p+:dword_width_p] 
       : (wbuf_entry_in.way_id[way_id_width_lp-2] 
           ? data_tv_r[2*dword_width_p+:dword_width_p]
@@ -594,8 +585,9 @@ module bp_be_dcache
             ? data_tv_r[dword_width_p+:dword_width_p]
             : data_tv_r[0+:dword_width_p]));
   end
+  /*
   else if (dmultiplier_p == 8) begin
-    assign data_op_tv_col_sel = wbuf_entry_in.way_id[way_id_width_lp-1]
+    assign data_tv_col = wbuf_entry_in.way_id[way_id_width_lp-1]
       ? data_tv_r[7*dword_width_p+:dword_width_p]
       : (wbuf_entry_in.way_id[way_id_width_lp-2]
         ? data_tv_r[6*dword_width_p+:dword_width_p]
@@ -610,8 +602,8 @@ module bp_be_dcache
                 : (wbuf_entry_in.way_id[way_id_width_lp-7]
                   ? data_tv_r[dword_width_p+:dword_width_p]
                   : data_tv_r[0+:dword_width_p]))))));
-
   end
+  */
 
 
   // TODO: Add assertion, otherwise this will just infer latches....
@@ -939,6 +931,24 @@ module bp_be_dcache
 
   logic [lce_assoc_p-1:0][dword_width_p-1:0] lce_data_mem_write_data;
 
+  // select which column of 64 bits is chosen
+  logic [dword_width_p-1:0] wbuf_entry_out_col;
+
+  if (dmultiplier_p == 1) assign wbuf_entry_out_col = wbuf_entry_out.data;
+  else if (dmultiplier_p == 2) begin
+    assign wbuf_entry_out_col = wbuf_entry_out.way_id[0]
+      ? wbuf_entry_out.data[0+:dword_width_p] : wbuf_entry_out.data[dword_width_p+:dword_width_p];
+  end
+  else if (dmultiplier_p == 4) begin
+    assign wbuf_entry_out_col = wbuf_entry_out.way_id[way_id_width_lp-1]
+      ? wbuf_entry_out.data[3*dword_width_p+:dword_width_p] 
+      : (wbuf_entry_out.way_id[way_id_width_lp-2] 
+          ? wbuf_entry_out.data[2*dword_width_p+:dword_width_p]
+          : (wbuf_entry_out.way_id[way_id_width_lp-3]
+            ? wbuf_entry_out.data[dword_width_p+:dword_width_p]
+            : wbuf_entry_out.data[0+:dword_width_p]));
+  end
+
   for (genvar i = 0; i < lce_dcache_assoc_p; i++) begin
     assign data_mem_addr_li[i] = (load_op & tl_we)
       ? {addr_index, addr_word_offset}
@@ -1143,6 +1153,15 @@ module bp_be_dcache
   else if (dmultiplier_p == 2) begin
     assign uncached_load_data_n = data_mem_pkt.way_id[0]
       ? data_mem_pkt.data[0+:dword_width_p] : data_mem_pkt.data[dword_width_p+:dword_width_p];
+  end
+  else if (dmultiplier_p == 4) begin
+    assign uncached_load_data_n = data_mem_pkt.way_id[way_id_width_lp-1]
+      ? data_mem_pkt.data[3*dword_width_p+:dword_width_p] 
+      : (data_mem_pkt.way_id[way_id_width_lp-2] 
+          ? data_mem_pkt.data[2*dword_width_p+:dword_width_p]
+          : (data_mem_pkt.way_id[way_id_width_lp-3]
+            ? data_mem_pkt.data[dword_width_p+:dword_width_p]
+            : data_mem_pkt.data[0+:dword_width_p]));
   end
 
   always_ff @ (posedge clk_i) begin
