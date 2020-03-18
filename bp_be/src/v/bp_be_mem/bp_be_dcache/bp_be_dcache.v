@@ -564,10 +564,9 @@ module bp_be_dcache
 
 
   // starting with the 4-way assoc
+  /*
   logic [dword_width_p-1:0] data_tv_col;
   logic [way_id_width_lp-1:0] bank_sel;
-
-  assign bank_sel = wbuf_entry_in.way_id ^ wbuf_entry_in.paddr[byte_offset_width_lp+:word_offset_width_lp];
 
   if (dmultiplier_p == 1) begin
     assign data_tv_col = data_tv_r;
@@ -585,6 +584,7 @@ module bp_be_dcache
             ? data_tv_r[dword_width_p+:dword_width_p]
             : data_tv_r[0+:dword_width_p]));
   end
+  */
   /*
   else if (dmultiplier_p == 8) begin
     assign data_tv_col = wbuf_entry_in.way_id[way_id_width_lp-1]
@@ -609,12 +609,12 @@ module bp_be_dcache
   // TODO: Add assertion, otherwise this will just infer latches....
   if (dword_width_p == 64) begin
     assign wbuf_entry_in.data = double_op_tv_r
-      ? data_tv_col
+      ? data_tv_r
       : (word_op_tv_r
-        ? {2{data_tv_col[0+:32]}}
+        ? {2{data_tv_r[0+:32]}}
         : (half_op_tv_r
-          ? {4{data_tv_col[0+:16]}}
-          : {8{data_tv_col[0+:8]}}));
+          ? {4{data_tv_r[0+:16]}}
+          : {8{data_tv_r[0+:8]}}));
 
     assign wbuf_entry_in.mask = double_op_tv_r
       ? 8'b1111_1111
