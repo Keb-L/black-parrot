@@ -263,8 +263,12 @@ module bp_be_dcache
   assign addr_index = dcache_pkt.page_offset[block_offset_width_lp+:index_width_lp];
   assign addr_word_offset = dcache_pkt.page_offset[byte_offset_width_lp+:word_offset_width_lp];
   assign addr_word_offset_shift = addr_word_offset >> dcache_col_width_lp; // way id
-  assign addr_word_col_id = addr_word_offset ~& {{dcache_way_width_lp{1'b0}}, {dcache_col_width_lp{1'b1}}}; // col id
 
+  if (lce_dcache_assoc_p == 8)
+    assign addr_word_col_id = '0;
+  else
+    assign addr_word_col_id = addr_word_offset ~& {{dcache_way_width_lp{1'b0}}, {dcache_col_width_lp{1'b1}}}; // col id
+  
   // TL stage
   //
   logic v_tl_r; // valid bit
@@ -316,12 +320,13 @@ module bp_be_dcache
   logic tag_mem_v_li;
   logic tag_mem_w_li;
   logic [index_width_lp-1:0] tag_mem_addr_li;
-  bp_be_dcache_tag_info_s [lce_assoc_p-1:0] tag_mem_data_li;
-  bp_be_dcache_tag_info_s [lce_assoc_p-1:0] tag_mem_mask_li;
-  bp_be_dcache_tag_info_s [lce_assoc_p-1:0] tag_mem_data_lo;
+  bp_be_dcache_tag_info_s [lce_dcache_assoc_p-1:0] tag_mem_data_li;
+  bp_be_dcache_tag_info_s [lce_dcache_assoc_p-1:0] tag_mem_mask_li;
+  bp_be_dcache_tag_info_s [lce_dcache_assoc_p-1:0] tag_mem_data_lo;
+  
   
   bsg_mem_1rw_sync_mask_write_bit
-    #(.width_p(tag_info_width_lp*lce_assoc_p)
+    #(.width_p(tag_info_width_lp*lce_dcache_assoc_p)
       ,.els_p(lce_sets_p)
     )
     tag_mem
@@ -341,7 +346,7 @@ module bp_be_dcache
   // KL: Modified width to match the new associativity
   logic [lce_dcache_assoc_p-1:0] data_mem_v_li;
   logic data_mem_w_li;
-  logic [lce_dcache_assoc_p-1:0][index_width_lp+dcache_way_width_lp-1:0] data_mem_addr_li; // TODO: Modify the width of this
+  logic [lce_dcache_assoc_p-1:0][index_width_lp+dcache_way_width_lp-1:0] data_mem_addr_li; 
   logic [lce_dcache_assoc_p-1:0][dset_data_width_p-1:0] data_mem_data_li;
   logic [lce_dcache_assoc_p-1:0][dcache_data_mask_width_lp-1:0] data_mem_mask_li;
   logic [lce_dcache_assoc_p-1:0][dset_data_width_p-1:0] data_mem_data_lo;
@@ -464,8 +469,8 @@ module bp_be_dcache
   logic [lce_dcache_assoc_p-1:0] invalid_tv;   // KL : by associativity
   logic load_hit;
   logic store_hit;
-  logic [way_id_width_lp-1:0] load_hit_way;   // TODO
-  logic [way_id_width_lp-1:0] store_hit_way;  // TODO
+  logic [dcache_way_width_lp-1:0] load_hit_way;   // TODO
+  logic [dcache_way_width_lp-1:0] store_hit_way;  // TODO
 
   for (genvar i = 0; i < lce_dcache_assoc_p; i++) begin: tag_comp
     assign tag_match_tv[i] = addr_tag_tv == tag_info_tv_r[i].tag;
@@ -987,7 +992,10 @@ module bp_be_dcache
   logic [dcache_way_width_lp-1:0] wbuf_entry_out_way_id;
   logic [dcache_col_width_lp-1:0] wbuf_entry_out_col_id;
   assign wbuf_entry_out_way_id = wbuf_entry_out.way_id >> dcache_col_width_lp;  
-  assign wbuf_entry_out_col_id = wbuf_entry_out.way_id ~& {{dcache_way_width_lp{1'b0}}, {dcache_col_width_lp{1'b1}}};  
+  if (lce_dcache_assoc_p == 8)
+    assign wbuf_entry_out_col_id = '0;  
+  else
+    assign wbuf_entry_out_col_id = wbuf_entry_out.way_id ~& {{dcache_way_width_lp{1'b0}}, {dcache_col_width_lp{1'b1}}};  
 
   // DWORD shifting of the mask and data
   logic [dmultiplier_p-1:0][data_mask_width_lp-1:0] wbuf_entry_out_mask_ext;
@@ -1010,7 +1018,10 @@ module bp_be_dcache
 
   assign data_mem_pkt_data   = data_mem_pkt.data;
   assign data_mem_pkt_way_id = data_mem_pkt.way_id >> dcache_col_width_lp; // Shift by 0-3 bits
-  assign data_mem_pkt_col_id = data_mem_pkt.way_id ~& {{dcache_way_width_lp{1'b0}}, {dcache_col_width_lp{1'b1}}}; 
+  if (lce_dcache_assoc_p == 8)
+    assign data_mem_pkt_col_id = '0; 
+  else
+    assign data_mem_pkt_col_id = data_mem_pkt.way_id ~& {{dcache_way_width_lp{1'b0}}, {dcache_col_width_lp{1'b1}}}; 
 
   bsg_mux_butterfly#(
     .width_p( dset_data_width_p )
@@ -1023,6 +1034,25 @@ module bp_be_dcache
  
   // tag_mem
   //
+
+  //DEBUG
+  logic [index_width_lp-1:0] DEBUG_tag_mem_pkt_index;
+  logic [way_id_width_lp-1:0] DEBUG_tag_mem_pkt_way_id;
+  logic [dcache_way_width_lp-1:0] DEBUG_tag_mem_pkt_way_shift;
+  logic [dcache_col_width_lp-1:0] DEBUG_tag_mem_pkt_col;
+  logic [ptag_width_lp-1:0] DEBUG_tag_mem_tag;
+  logic [2:0] DEBUG_tag_mem_state;
+
+  assign DEBUG_tag_mem_pkt_index = tag_mem_pkt.index;
+  assign DEBUG_tag_mem_pkt_way_id = tag_mem_pkt.way_id;
+  assign DEBUG_tag_mem_pkt_way_shift = tag_mem_pkt.way_id >> dcache_col_width_lp;
+
+  if (lce_dcache_assoc_p == 8)
+    assign DEBUG_tag_mem_pkt_col = '0;
+  else
+    assign DEBUG_tag_mem_pkt_col = tag_mem_pkt.way_id ~& {{dcache_way_width_lp{1'b0}}, {dcache_col_width_lp{1'b1}}}; 
+  assign DEBUG_tag_mem_tag = tag_mem_pkt.tag;
+  assign DEBUG_tag_mem_state = tag_mem_pkt.state;
 
   // TODO modify tag_mem
   assign tag_mem_v_li = tl_we | tag_mem_pkt_v_i; 
@@ -1042,26 +1072,26 @@ module bp_be_dcache
   always_comb begin
     case (tag_mem_pkt.opcode)
       e_cache_tag_mem_set_clear: begin
-        tag_mem_data_li = {(tag_info_width_lp*lce_assoc_p){1'b0}};
-        tag_mem_mask_li = {(tag_info_width_lp*lce_assoc_p){1'b1}};
+        tag_mem_data_li = {(tag_info_width_lp*lce_dcache_assoc_p){1'b0}};
+        tag_mem_mask_li = {(tag_info_width_lp*lce_dcache_assoc_p){1'b1}};
       end
       e_cache_tag_mem_invalidate: begin
-        tag_mem_data_li = {((tag_info_width_lp)*lce_assoc_p){1'b0}};
-        for (integer i = 0; i < lce_assoc_p; i++) begin 
+        tag_mem_data_li = {((tag_info_width_lp)*lce_dcache_assoc_p){1'b0}};
+        for (integer i = 0; i < lce_dcache_assoc_p; i++) begin 
           tag_mem_mask_li[i].coh_state = {`bp_coh_bits{lce_tag_mem_way_one_hot[i]}};
           tag_mem_mask_li[i].tag = {ptag_width_lp{1'b0}};
         end
       end
       e_cache_tag_mem_set_tag: begin
-        tag_mem_data_li = {lce_assoc_p{tag_mem_pkt.state, tag_mem_pkt.tag}};
-        for (integer i = 0; i < lce_assoc_p; i++) begin
+        tag_mem_data_li = {lce_dcache_assoc_p{tag_mem_pkt.state, tag_mem_pkt.tag}};
+        for (integer i = 0; i < lce_dcache_assoc_p; i++) begin
           tag_mem_mask_li[i].coh_state = {`bp_coh_bits{lce_tag_mem_way_one_hot[i]}};
           tag_mem_mask_li[i].tag = {ptag_width_lp{lce_tag_mem_way_one_hot[i]}};
         end
       end
       default: begin
-        tag_mem_data_li = {(tag_info_width_lp*lce_assoc_p){1'b0}};
-        tag_mem_mask_li = {(tag_info_width_lp*lce_assoc_p){1'b0}};
+        tag_mem_data_li = {(tag_info_width_lp*lce_dcache_assoc_p){1'b0}};
+        tag_mem_mask_li = {(tag_info_width_lp*lce_dcache_assoc_p){1'b0}};
       end
     endcase
   end
@@ -1158,7 +1188,6 @@ module bp_be_dcache
     end
   end
 
-  // TODO
   bsg_mux_butterfly
    #(.width_p(dset_data_width_p)
     ,.els_p(lce_dcache_assoc_p))
