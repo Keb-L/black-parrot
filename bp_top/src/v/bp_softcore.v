@@ -126,51 +126,140 @@ module bp_softcore
      );
 
   wire [1:0][lce_id_width_p-1:0] lce_id_li = {cfg_bus_li.dcache_id, cfg_bus_li.icache_id};
-  for (genvar i = 0; i < 2; i++)
-    begin : uce
-      bp_uce
+  
+  bp_uce
        #(.bp_params_p(bp_params_p))
-       uce
+       icache_uce
         (.clk_i(clk_i)
          ,.reset_i(reset_i)
 
-         ,.lce_id_i(lce_id_li[i])
+         ,.lce_id_i(lce_id_li[0])
 
-         ,.cache_req_i(cache_req_lo[i])
-         ,.cache_req_v_i(cache_req_v_lo[i])
-         ,.cache_req_ready_o(cache_req_ready_li[i])
-         ,.cache_req_metadata_i(cache_req_metadata_lo[i])
-         ,.cache_req_metadata_v_i(cache_req_metadata_v_lo[i])
+         ,.cache_req_i(cache_req_lo[0])
+         ,.cache_req_v_i(cache_req_v_lo[0])
+         ,.cache_req_ready_o(cache_req_ready_li[0])
+         ,.cache_req_metadata_i(cache_req_metadata_lo[0])
+         ,.cache_req_metadata_v_i(cache_req_metadata_v_lo[0])
 
-         ,.tag_mem_pkt_o(tag_mem_pkt_li[i])
-         ,.tag_mem_pkt_v_o(tag_mem_pkt_v_li[i])
-         ,.tag_mem_pkt_ready_i(tag_mem_pkt_ready_lo[i])
-         ,.tag_mem_i(tag_mem_lo[i])
+         ,.tag_mem_pkt_o(tag_mem_pkt_li[0])
+         ,.tag_mem_pkt_v_o(tag_mem_pkt_v_li[0])
+         ,.tag_mem_pkt_ready_i(tag_mem_pkt_ready_lo[0])
+         ,.tag_mem_i(tag_mem_lo[0])
 
-         ,.data_mem_pkt_o(data_mem_pkt_li[i])
-         ,.data_mem_pkt_v_o(data_mem_pkt_v_li[i])
-         ,.data_mem_pkt_ready_i(data_mem_pkt_ready_lo[i])
-         ,.data_mem_i(data_mem_lo[i])
+         ,.data_mem_pkt_o(data_mem_pkt_li[0])
+         ,.data_mem_pkt_v_o(data_mem_pkt_v_li[0])
+         ,.data_mem_pkt_ready_i(data_mem_pkt_ready_lo[0])
+         ,.data_mem_i(data_mem_lo[0])
 
-         ,.stat_mem_pkt_o(stat_mem_pkt_li[i])
-         ,.stat_mem_pkt_v_o(stat_mem_pkt_v_li[i])
-         ,.stat_mem_pkt_ready_i(stat_mem_pkt_ready_lo[i])
-         ,.stat_mem_i(stat_mem_lo[i])
+         ,.stat_mem_pkt_o(stat_mem_pkt_li[0])
+         ,.stat_mem_pkt_v_o(stat_mem_pkt_v_li[0])
+         ,.stat_mem_pkt_ready_i(stat_mem_pkt_ready_lo[0])
+         ,.stat_mem_i(stat_mem_lo[0])
 
-         ,.cache_req_complete_o(cache_req_complete_li[i])
+         ,.cache_req_complete_o(cache_req_complete_li[0])
 
-         ,.credits_full_o(credits_full_li[i])
-         ,.credits_empty_o(credits_empty_li[i])
+         ,.credits_full_o(credits_full_li[0])
+         ,.credits_empty_o(credits_empty_li[0])
 
-         ,.mem_cmd_o(mem_cmd_lo[i])
-         ,.mem_cmd_v_o(mem_cmd_v_lo[i])
-         ,.mem_cmd_ready_i(mem_cmd_ready_li[i])
+         ,.mem_cmd_o(mem_cmd_lo[0])
+         ,.mem_cmd_v_o(mem_cmd_v_lo[0])
+         ,.mem_cmd_ready_i(mem_cmd_ready_li[0])
 
-         ,.mem_resp_i(mem_resp_li[i])
-         ,.mem_resp_v_i(mem_resp_v_li[i])
-         ,.mem_resp_yumi_o(mem_resp_yumi_lo[i])
+         ,.mem_resp_i(mem_resp_li[0])
+         ,.mem_resp_v_i(mem_resp_v_li[0])
+         ,.mem_resp_yumi_o(mem_resp_yumi_lo[0])
          );
-    end
+  
+  bp_uce
+       #(.bp_params_p(bp_params_p)
+        ,.cache_assoc_p(lce_dcache_assoc_p)
+        ,.cache_sets_p(lce_dcache_sets_p))
+       dcache_uce
+        (.clk_i(clk_i)
+         ,.reset_i(reset_i)
+
+         ,.lce_id_i(lce_id_li[1])
+
+         ,.cache_req_i(cache_req_lo[1])
+         ,.cache_req_v_i(cache_req_v_lo[1])
+         ,.cache_req_ready_o(cache_req_ready_li[1])
+         ,.cache_req_metadata_i(cache_req_metadata_lo[1])
+         ,.cache_req_metadata_v_i(cache_req_metadata_v_lo[1])
+
+         ,.tag_mem_pkt_o(tag_mem_pkt_li[1])
+         ,.tag_mem_pkt_v_o(tag_mem_pkt_v_li[1])
+         ,.tag_mem_pkt_ready_i(tag_mem_pkt_ready_lo[1])
+         ,.tag_mem_i(tag_mem_lo[1])
+
+         ,.data_mem_pkt_o(data_mem_pkt_li[1])
+         ,.data_mem_pkt_v_o(data_mem_pkt_v_li[1])
+         ,.data_mem_pkt_ready_i(data_mem_pkt_ready_lo[1])
+         ,.data_mem_i(data_mem_lo[1])
+
+         ,.stat_mem_pkt_o(stat_mem_pkt_li[1])
+         ,.stat_mem_pkt_v_o(stat_mem_pkt_v_li[1])
+         ,.stat_mem_pkt_ready_i(stat_mem_pkt_ready_lo[1])
+         ,.stat_mem_i(stat_mem_lo[1])
+
+         ,.cache_req_complete_o(cache_req_complete_li[1])
+
+         ,.credits_full_o(credits_full_li[1])
+         ,.credits_empty_o(credits_empty_li[1])
+
+         ,.mem_cmd_o(mem_cmd_lo[1])
+         ,.mem_cmd_v_o(mem_cmd_v_lo[1])
+         ,.mem_cmd_ready_i(mem_cmd_ready_li[1])
+
+         ,.mem_resp_i(mem_resp_li[1])
+         ,.mem_resp_v_i(mem_resp_v_li[1])
+         ,.mem_resp_yumi_o(mem_resp_yumi_lo[1])
+         );
+  
+  // for (genvar i = 0; i < 2; i++)
+  //   begin : uce
+  //     bp_uce
+  //      #(.bp_params_p(bp_params_p))
+  //      uce
+  //       (.clk_i(clk_i)
+  //        ,.reset_i(reset_i)
+
+  //        ,.lce_id_i(lce_id_li[i])
+
+  //        ,.cache_req_i(cache_req_lo[i])
+  //        ,.cache_req_v_i(cache_req_v_lo[i])
+  //        ,.cache_req_ready_o(cache_req_ready_li[i])
+  //        ,.cache_req_metadata_i(cache_req_metadata_lo[i])
+  //        ,.cache_req_metadata_v_i(cache_req_metadata_v_lo[i])
+
+  //        ,.tag_mem_pkt_o(tag_mem_pkt_li[i])
+  //        ,.tag_mem_pkt_v_o(tag_mem_pkt_v_li[i])
+  //        ,.tag_mem_pkt_ready_i(tag_mem_pkt_ready_lo[i])
+  //        ,.tag_mem_i(tag_mem_lo[i])
+
+  //        ,.data_mem_pkt_o(data_mem_pkt_li[i])
+  //        ,.data_mem_pkt_v_o(data_mem_pkt_v_li[i])
+  //        ,.data_mem_pkt_ready_i(data_mem_pkt_ready_lo[i])
+  //        ,.data_mem_i(data_mem_lo[i])
+
+  //        ,.stat_mem_pkt_o(stat_mem_pkt_li[i])
+  //        ,.stat_mem_pkt_v_o(stat_mem_pkt_v_li[i])
+  //        ,.stat_mem_pkt_ready_i(stat_mem_pkt_ready_lo[i])
+  //        ,.stat_mem_i(stat_mem_lo[i])
+
+  //        ,.cache_req_complete_o(cache_req_complete_li[i])
+
+  //        ,.credits_full_o(credits_full_li[i])
+  //        ,.credits_empty_o(credits_empty_li[i])
+
+  //        ,.mem_cmd_o(mem_cmd_lo[i])
+  //        ,.mem_cmd_v_o(mem_cmd_v_lo[i])
+  //        ,.mem_cmd_ready_i(mem_cmd_ready_li[i])
+
+  //        ,.mem_resp_i(mem_resp_li[i])
+  //        ,.mem_resp_v_i(mem_resp_v_li[i])
+  //        ,.mem_resp_yumi_o(mem_resp_yumi_lo[i])
+  //        );
+  //   end
 
   bp_clint_slice_buffered
    #(.bp_params_p(bp_params_p))
