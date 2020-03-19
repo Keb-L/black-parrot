@@ -93,7 +93,7 @@ module bp_be_dcache
     , localparam word_offset_width_lp=`BSG_SAFE_CLOG2(block_size_in_words_lp)
     , localparam block_offset_width_lp=(word_offset_width_lp+byte_offset_width_lp)
     , localparam index_width_lp=`BSG_SAFE_CLOG2(lce_sets_p)
-    , localparam index_width_col_lp ='BSG_SAFE_CLOG2(dsets_data_width_p)
+    , localparam index_width_col_lp =`BSG_SAFE_CLOG2(dset_data_width_p)
 
     , localparam ptag_width_lp=(paddr_width_p-bp_page_offset_width_gp)
     , localparam way_id_width_lp=`BSG_SAFE_CLOG2(lce_dcache_assoc_p)
@@ -314,7 +314,7 @@ module bp_be_dcache
   
   bsg_mem_1rw_sync_mask_write_bit
     #(.width_p(tag_info_width_lp*lce_dcache_assoc_p)
-      ,.els_p(lce_dcache_ets_p)
+      ,.els_p(lce_dcache_sets_p)
     )
     tag_mem
       (.clk_i(clk_i)
@@ -962,8 +962,8 @@ module bp_be_dcache
         ? {wbuf_entry_out_index, wbuf_entry_out_word_offset}
         : {data_mem_pkt.index, data_mem_pkt.way_id ^ ((word_offset_width_lp)'(i))});
     assign data_mem_data_li[i] = wbuf_yumi_li
-// ? wbuf_entry_out.data
-      ? wbuf_entry_out_col
+      ? wbuf_entry_out.data
+      // ? wbuf_entry_out_col
       : lce_data_mem_write_data[i];
   
     assign data_mem_mask_li[i] = wbuf_yumi_li
@@ -1180,7 +1180,7 @@ module bp_be_dcache
     end
     else begin
       if (data_mem_pkt_v_i & (data_mem_pkt.opcode == e_cache_data_mem_uncached)) begin
-        uncached_load_data_r <= uncached_load_data_n;
+        uncached_load_data_r <= data_mem_pkt.data[0+dword_width_p];
         uncached_load_data_v_r <= 1'b1;
       end
       else if (poison_i)
