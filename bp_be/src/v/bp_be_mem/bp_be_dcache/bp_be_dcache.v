@@ -102,7 +102,7 @@ module bp_be_dcache
     // 3-bit Way ID = {D-Cache Way ID, column index}
     , localparam dcache_way_width_lp=`BSG_SAFE_CLOG2(lce_dcache_assoc_p)    // Width of the way id with lce_dcache_assoc_p
     , localparam dcache_data_mask_width_lp=(dset_data_width_p >> 3)         // Width of the data mask with new cache width
-    , localparam dcache_col_width_lp=(way_id_width_lp-dcache_way_width_lp)  // Width of column id (0-3)
+    , localparam dcache_col_width_lp=`BSG_SAFE_CLOG2(dmultiplier_p) //(way_id_width_lp-dcache_way_width_lp)  // Width of column id (0-3)
 
     , localparam dcache_pkt_width_lp=`bp_be_dcache_pkt_width(page_offset_width_p,dword_width_p)
     , localparam tag_info_width_lp=`bp_be_dcache_tag_info_width(ptag_width_lp)
@@ -267,7 +267,7 @@ module bp_be_dcache
   if (lce_dcache_assoc_p == 8)
     assign addr_word_col_id = '0;
   else
-    assign addr_word_col_id = addr_word_offset ~& {{dcache_way_width_lp{1'b0}}, {dcache_col_width_lp{1'b1}}}; // col id
+    assign addr_word_col_id = addr_word_offset[dcache_col_width_lp-1:0]; // col id
   
   // TL stage
   //
@@ -285,6 +285,8 @@ module bp_be_dcache
   logic byte_op_tl_r;
   logic [bp_page_offset_width_gp-1:0] page_offset_tl_r;
   logic [dword_width_p-1:0] data_tl_r;
+
+
 
   assign tl_we = v_i & cache_req_ready_i & ~poison_i;
   
@@ -351,7 +353,8 @@ module bp_be_dcache
   logic [lce_dcache_assoc_p-1:0][dcache_data_mask_width_lp-1:0] data_mem_mask_li;
   logic [lce_dcache_assoc_p-1:0][dset_data_width_p-1:0] data_mem_data_lo;
 
-  logic [lce_dcache_assoc_p-1:0][dcache_col_width_lp-1:0] data_mem_col_id;
+  logic [dcache_col_width_lp-1:0] data_mem_col_id;
+  logic [dcache_way_width_lp-1:0] data_mem_way_id;
 
   logic [lce_dcache_assoc_p-1:0][index_width_lp-1:0] DEBUG_data_mem_addr_index;
   logic [lce_dcache_assoc_p-1:0][dcache_way_width_lp-1:0] DEBUG_data_mem_addr_word;
@@ -393,7 +396,7 @@ module bp_be_dcache
   logic uncached_tv_r;
   logic [paddr_width_p-1:0] paddr_tv_r;
   logic [dword_width_p-1:0] data_tv_r;
-  bp_be_dcache_tag_info_s [lce_assoc_p-1:0] tag_info_tv_r;  // TODO
+  bp_be_dcache_tag_info_s [lce_dcache_assoc_p-1:0] tag_info_tv_r;  // TODO
   logic [lce_dcache_assoc_p-1:0][dset_data_width_p-1:0] ld_data_tv_r;  // KL : matched size of data_mem_data_lo
   logic [ptag_width_lp-1:0] addr_tag_tv;
   logic [index_width_lp-1:0] addr_index_tv;
@@ -401,6 +404,7 @@ module bp_be_dcache
   logic [dcache_way_width_lp-1:0] addr_word_offset_shift_tv; // KL: Tag verify word offset should only use upper bits.
 
   logic [dcache_col_width_lp-1:0] data_mem_col_id_r;
+  logic [dcache_way_width_lp-1:0] data_mem_way_id_r;
 
   assign tv_we = v_tl_r & ~poison_i & ~tlb_miss_i;
 
@@ -448,6 +452,7 @@ module bp_be_dcache
       if (tv_we & load_op_tl_r) begin
         ld_data_tv_r <= data_mem_data_lo;
         data_mem_col_id_r <= data_mem_col_id; 
+        data_mem_way_id_r <= data_mem_way_id;
       end
 
       if (tv_we & store_op_tl_r) begin
@@ -588,7 +593,13 @@ module bp_be_dcache
   logic [index_width_lp-1:0] wbuf_entry_out_index;
 
   assign wbuf_entry_out_word_offset = wbuf_entry_out.paddr[byte_offset_width_lp+:word_offset_width_lp];
-  assign wbuf_entry_out_word_offset_shift = wbuf_entry_out_word_offset >> dcache_col_width_lp;
+  assign wbuf_entry_out_word_offset_shift = wbuf_entry_out_word_offset >> dcache_col_width_lp;  // Way id from wbuf
+
+  if (lce_dcache_assoc_p == 8)
+    assign wbuf_entry_out_col_id = '0;
+  else
+    assign wbuf_entry_out_col_id = wbuf_entry_out_word_offset[dcache_col_width_lp-1:0];
+
   assign wbuf_entry_out_index = wbuf_entry_out.paddr[block_offset_width_lp+:index_width_lp];
 
   assign wbuf_entry_in.paddr = paddr_tv_r;
@@ -822,7 +833,7 @@ module bp_be_dcache
     ,.data_o(ld_data_way_picked)  // Change this to dset_data_width_p
   );
 
-  // Assign by column (mux to dword)
+  // // Assign by column (mux to dword)
   bsg_mux #(
     .width_p( dword_width_p ) // 64 bit dwords
     ,.els_p( dmultiplier_p )  // number of dwords
@@ -831,7 +842,7 @@ module bp_be_dcache
     ,.sel_i( data_mem_col_id_r )
     ,.data_o( dword_picked )
   );
-  
+
   // Splices together between dword_picked and bypass_data_lo
   bsg_mux_segmented #(
     .segments_p(data_mask_width_lp)
@@ -940,6 +951,7 @@ module bp_be_dcache
       : (wbuf_yumi_li
         ? {wbuf_entry_out_index, wbuf_entry_out_word_offset_shift}
         : {data_mem_pkt.index, data_mem_pkt_way_id ^ ((dcache_way_width_lp)'(i))});  // modified way id according to associativity
+
     assign data_mem_data_li[i] = wbuf_yumi_li
       ? wbuf_entry_out_data_ext       // from the write buffer, extended to 64*multiplier bits
       : lce_data_mem_write_data[i];   // from butterfly (dcache pkt)
@@ -948,16 +960,22 @@ module bp_be_dcache
       ? wbuf_entry_out_mask_ext             // from the write buffer, extended to 64*multiplier bits
       : {dcache_data_mask_width_lp{1'b1}};  // all pass mask, extended to 64*multiplier bits
 
-    assign data_mem_col_id[i] = (load_op & tl_we)
-      ? { addr_word_col_id }  // We need to use the shifted value because we're effectively reducing the number of word offsets
-      : (wbuf_yumi_li
-        ? {wbuf_entry_out_index, wbuf_entry_out_word_offset_shift}
-        : { data_mem_pkt_col_id });
-
     assign {DEBUG_data_mem_addr_index[i], DEBUG_data_mem_addr_word[i]}  = data_mem_addr_li[i];
     assign DEBUG_data_mem_word[i] = data_mem_pkt_way_id ^ ((dcache_way_width_lp)'(i));
     assign DEBUG_data_mem_word_orig[i] = data_mem_pkt_way_id ^ ((word_offset_width_lp)'(i));
   end
+
+  assign data_mem_col_id = (load_op & tl_we)
+      ? { addr_word_col_id }  // We need to use the shifted value because we're effectively reducing the number of word offsets
+      : (wbuf_yumi_li
+        ? { wbuf_entry_out_col_id }
+        : { data_mem_pkt_col_id });
+
+  assign data_mem_way_id = (load_op & tl_we)
+    ? { addr_word_offset_shift }  // We need to use the shifted value because we're effectively reducing the number of word offsets
+    : (wbuf_yumi_li
+      ? { wbuf_entry_out_way_id }
+      : { data_mem_pkt_way_id });
 
   // DEBUG
   logic [(lce_assoc_p*lce_sets_p)-1:0] DEBUG_data_mem_pkt_data;
@@ -993,9 +1011,9 @@ module bp_be_dcache
   logic [dcache_col_width_lp-1:0] wbuf_entry_out_col_id;
   assign wbuf_entry_out_way_id = wbuf_entry_out.way_id >> dcache_col_width_lp;  
   if (lce_dcache_assoc_p == 8)
-    assign wbuf_entry_out_col_id = '0;  
+    assign wbuf_entry_out_col_id = '1;  
   else
-    assign wbuf_entry_out_col_id = wbuf_entry_out.way_id ~& {{dcache_way_width_lp{1'b0}}, {dcache_col_width_lp{1'b1}}};  
+    assign wbuf_entry_out_col_id = wbuf_entry_out.way_id[dcache_col_width_lp-1:0];  
 
   // DWORD shifting of the mask and data
   logic [dmultiplier_p-1:0][data_mask_width_lp-1:0] wbuf_entry_out_mask_ext;
@@ -1021,7 +1039,7 @@ module bp_be_dcache
   if (lce_dcache_assoc_p == 8)
     assign data_mem_pkt_col_id = '0; 
   else
-    assign data_mem_pkt_col_id = data_mem_pkt.way_id ~& {{dcache_way_width_lp{1'b0}}, {dcache_col_width_lp{1'b1}}}; 
+    assign data_mem_pkt_col_id = data_mem_pkt.way_id[dcache_col_width_lp-1:0]; 
 
   bsg_mux_butterfly#(
     .width_p( dset_data_width_p )
@@ -1050,9 +1068,20 @@ module bp_be_dcache
   if (lce_dcache_assoc_p == 8)
     assign DEBUG_tag_mem_pkt_col = '0;
   else
-    assign DEBUG_tag_mem_pkt_col = tag_mem_pkt.way_id ~& {{dcache_way_width_lp{1'b0}}, {dcache_col_width_lp{1'b1}}}; 
+    assign DEBUG_tag_mem_pkt_col = tag_mem_pkt.way_id[dcache_col_width_lp-1:0]; 
   assign DEBUG_tag_mem_tag = tag_mem_pkt.tag;
   assign DEBUG_tag_mem_state = tag_mem_pkt.state;
+
+
+  logic [dcache_way_width_lp-1:0] tag_mem_pkt_way;
+  logic [dcache_col_width_lp-1:0] tag_mem_pkt_col;
+  assign tag_mem_pkt_way = tag_mem_pkt.way_id >> dcache_col_width_lp;
+
+  if (lce_dcache_assoc_p == 8)
+    assign tag_mem_pkt_col = '0;
+  else
+    assign tag_mem_pkt_col = ~tag_mem_pkt.way_id[dcache_col_width_lp-1:0]; 
+
 
   // TODO modify tag_mem
   assign tag_mem_v_li = tl_we | tag_mem_pkt_v_i; 
@@ -1061,11 +1090,11 @@ module bp_be_dcache
     ? addr_index
     : tag_mem_pkt.index;
 
-  logic [lce_assoc_p-1:0] lce_tag_mem_way_one_hot;
+  logic [lce_dcache_assoc_p-1:0] lce_tag_mem_way_one_hot;
   bsg_decode
-    #(.num_out_p(lce_assoc_p))
+    #(.num_out_p(lce_dcache_assoc_p))
     lce_tag_mem_way_decode
-      (.i(tag_mem_pkt.way_id)
+      (.i(tag_mem_pkt_way)
       ,.o(lce_tag_mem_way_one_hot)
       );
 
@@ -1179,12 +1208,10 @@ module bp_be_dcache
   // LCE data_mem
   //
   logic [way_id_width_lp-1:0] data_mem_pkt_way_r;
-  logic [dcache_way_width_lp-1:0] data_mem_pkt_way_id_r;
 
   always_ff @ (posedge clk_i) begin
     if (data_mem_pkt_v_i & (data_mem_pkt.opcode == e_cache_data_mem_read)) begin
       data_mem_pkt_way_r <= data_mem_pkt.way_id;
-      data_mem_pkt_way_id_r <= data_mem_pkt_way_id;
     end
   end
 
