@@ -254,11 +254,16 @@ $BP_TOP_DIR/src/v/bp_tile_node.v
 $BP_TOP_DIR/src/v/bsg_async_noc_link.v
 
 # EE477-CHIP
+$TOP/../ee477-chip/memories/saed90_128x128_1P_bit/saed90_128x128_1P_bit.v
 $TOP/../ee477-chip/memories/saed90_16x64_1P_bit/saed90_16x64_1P_bit.v
 $TOP/../ee477-chip/memories/saed90_248x64_1P_bit/saed90_248x64_1P_bit.v
+$TOP/../ee477-chip/memories/saed90_64x256_1P_bit/saed90_64x256_1P_bit.v
 $TOP/../ee477-chip/memories/saed90_64x32_2P/saed90_64x32_2P.v
 $TOP/../ee477-chip/memories/saed90_64x512_1P_BM/saed90_64x512_1P_BM.v
+$TOP/../ee477-chip/memories/saed90_8x128_1P_bit/saed90_8x128_1P_bit.v
+$TOP/../ee477-chip/memories/saed90_8x256_1P_bit/saed90_8x256_1P_bit.v
 $TOP/../ee477-chip/memories/saed90_8x64_1P_bit/saed90_8x64_1P_bit.v
+
 /home/projects/vlsi/common/ee477/kits/wi19/SAED_EDK90nm/stdview/stdcells.v
 
 $TOP/../ee477-chip/results/icc/bp_softcore.chip_finish_icc.output.v
